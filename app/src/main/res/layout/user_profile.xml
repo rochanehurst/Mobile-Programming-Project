@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Top bar with user icon and name -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="16dp">
+
+            <!-- App Title -->
+
+            <!-- User Name -->
+
+            <!-- User Profile Icon -->
+
+            <TextView
+                android:id="@+id/appTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:layout_marginStart="5dp"
+                android:text="Cougar Den"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvUserName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="15dp"
+                android:layout_toStartOf="@id/imgUserProfile"
+                android:text="Anna Mairaj"
+                android:textSize="16sp" />
+
+            <ImageView
+                android:id="@+id/imgUserProfile"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentEnd="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="User Profile"
+                android:padding="4dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_user"
+                tools:src="@tools:sample/avatars" />
+        </RelativeLayout>
+
+        <!-- Dashboard Buttons -->
+        <GridLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:columnCount="2"
+            android:rowCount="3"
+            android:alignmentMode="alignMargins"
+            android:rowOrderPreserved="false"
+            android:columnGap="16dp"
+            android:rowGap="16dp">
+
+            <!-- Marketplace -->
+            <Button
+                android:id="@+id/btnMarketplace"
+                android:layout_width="0dp"
+                android:layout_height="120dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:text="CougMart"
+                android:drawableTop="@drawable/ic_marketplace"/>
+
+            <!-- Lost & Found -->
+            <Button
+                android:id="@+id/btnLostFound"
+                android:layout_width="0dp"
+                android:layout_height="120dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:text="Lost & Found"
+                android:drawableTop="@drawable/ic_lostfound"/>
+
+            <!-- Student Clubs -->
+            <Button
+                android:id="@+id/btnClubs"
+                android:layout_width="0dp"
+                android:layout_height="120dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:text="Cougar Clubs"
+                android:drawableTop="@drawable/ic_clubs"/>
+
+            <!-- Connections -->
+            <Button
+                android:id="@+id/btnConnections"
+                android:layout_width="0dp"
+                android:layout_height="120dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:text="Cougar Connections"
+                android:drawableTop="@drawable/ic_connections"/>
+
+            <!-- Campus Safety -->
+            <Button
+                android:id="@+id/btnSafety"
+                android:layout_width="0dp"
+                android:layout_height="120dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:text="Cougar Campus Life"
+                android:drawableTop="@drawable/ic_safety"/>
+
+            <!-- Crime Reporting -->
+            <Button
+                android:id="@+id/btnCrimeReport"
+                android:layout_width="0dp"
+                android:layout_height="120dp"
+                android:layout_columnWeight="1"
+                android:layout_rowWeight="1"
+                android:text="Cougar Crime Report"
+                android:drawableTop="@drawable/ic_report"/>
+        </GridLayout>
+
+    </LinearLayout>
+</ScrollView>
+
