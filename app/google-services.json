@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "452090821709",
+    "project_id": "gatherapp-f2cb5",
+    "storage_bucket": "gatherapp-f2cb5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:452090821709:android:7f6300a556bb6dfc24b004",
+        "android_client_info": {
+          "package_name": "com.example.mobile_programming_project"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "452090821709-047b90f42jf54rni7h7e3lrf2q2j2p06.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mobile_programming_project",
+            "certificate_hash": "50f745f3c48306cafbc7b13e9b9381ec4968260a"
+          }
+        },
+        {
+          "client_id": "452090821709-f35jj0235psjmtchakjjrje7nr38f5fl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDenmpooAs5bARo4eoUkICvzOZD8a2t3Y4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "452090821709-f35jj0235psjmtchakjjrje7nr38f5fl.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

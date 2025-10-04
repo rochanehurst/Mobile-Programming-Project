@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">Mobile-Programming-Project</string>
+
+
+    <string name="default_web_client_id">
+        452090821709-f35jj0235psjmtchakjjrje7nr38f5fl.apps.googleusercontent.com
+    </string>
 </resources>
