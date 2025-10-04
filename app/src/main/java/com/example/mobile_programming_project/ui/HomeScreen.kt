@@ -27,6 +27,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.storage.ktx.storage
+import com.google.firebase.firestore.ktx.firestore
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 // ---------------------- DATA ----------------------
 data class Post(
@@ -40,12 +45,6 @@ data class Post(
     val imageUri: Uri? = null
 )
 
-private val demoPosts = listOf(
-    Post("1", "Edein Vindain", "5 min ago", "Lost & Found", "Lost my water bottle. It looks like this.", 999, 320),
-    Post("2", "Dian Cinne", "10 min ago", "Marketplace", "Selling a used backpack.", 10000, 300),
-    Post("3", "John Put", "23 min ago", "Safety", "Someone stole my backpack near the marketplace.", 140, 19)
-)
-
 val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety")
 
 // ---------------------- HOME SCREEN ----------------------
@@ -55,7 +54,26 @@ fun HomeScreen(onSignOut: () -> Unit = {}) {
     var selectedCategory by remember { mutableStateOf("Home") }
     var dropdownExpanded by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
-    val posts = remember { mutableStateListOf(*demoPosts.toTypedArray()) }
+    val posts = remember { mutableStateListOf<Post>() }
+
+    // 🔥 Load Firestore posts on first render
+    LaunchedEffect(Unit) {
+        val snapshot = Firebase.firestore.collection("posts").get().await()
+        val loaded = snapshot.documents.map { doc ->
+            Post(
+                id = doc.id,
+                userName = doc.getString("userName") ?: "Unknown",
+                timeAgo = doc.getString("timeAgo") ?: "",
+                category = doc.getString("category") ?: "Home",
+                content = doc.getString("content") ?: "",
+                likes = (doc.getLong("likes") ?: 0).toInt(),
+                comments = (doc.getLong("comments") ?: 0).toInt(),
+                imageUri = doc.getString("imageUrl")?.let { Uri.parse(it) }
+            )
+        }
+        posts.clear()
+        posts.addAll(loaded)
+    }
 
     val filteredPosts = if (selectedCategory == "Home") posts
     else posts.filter { it.category.equals(selectedCategory, ignoreCase = true) }
@@ -148,7 +166,6 @@ fun HomeScreen(onSignOut: () -> Unit = {}) {
 
 // ---------------------- POST CARD ----------------------
 @Composable
-
 private fun PostCard(post: Post, onCategoryClick: (String) -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -165,7 +182,6 @@ private fun PostCard(post: Post, onCategoryClick: (String) -> Unit) {
             Spacer(Modifier.height(12.dp))
             Text(post.content, color = Color.White)
 
-            // 👇 ADD THIS
             post.imageUri?.let { uri ->
                 Spacer(Modifier.height(12.dp))
                 Image(
@@ -211,40 +227,71 @@ private fun RowActions(likes: Int, comments: Int) {
     }
 }
 
-// ---------------------- CREATE POST DIALOG WITH IMAGE PICKER ----------------------
+// ---------------------- CREATE POST DIALOG ----------------------
 @Composable
 fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
+    val storage = Firebase.storage
+    val firestore = Firebase.firestore
+    val coroutineScope = rememberCoroutineScope()
+
     var text by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(categories.first { it != "Home" }) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploading by remember { mutableStateOf(false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) imageUri = uri
-    }
+    ) { uri -> if (uri != null) imageUri = uri }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
+                enabled = !isUploading,
                 onClick = {
                     if (text.isNotBlank()) {
-                        onPostCreated(
-                            Post(
+                        isUploading = true
+                        coroutineScope.launch {
+                            var imageUrl: String? = null
+                            if (imageUri != null) {
+                                val fileName = "images/${System.currentTimeMillis()}.jpg"
+                                val ref = storage.reference.child(fileName)
+                                ref.putFile(imageUri!!).await()
+                                imageUrl = ref.downloadUrl.await().toString()
+                            }
+
+                            val newPost = Post(
                                 id = System.currentTimeMillis().toString(),
                                 userName = "You",
                                 timeAgo = "Just now",
                                 category = selectedCategory,
-                                content = text + if (imageUri != null) " [Image attached]" else "",
+                                content = text,
                                 likes = 0,
                                 comments = 0,
                                 imageUri = imageUri
                             )
-                        )
+
+                            firestore.collection("posts").add(
+                                hashMapOf(
+                                    "userName" to newPost.userName,
+                                    "timeAgo" to newPost.timeAgo,
+                                    "category" to newPost.category,
+                                    "content" to newPost.content,
+                                    "likes" to newPost.likes,
+                                    "comments" to newPost.comments,
+                                    "imageUrl" to imageUrl
+                                )
+                            )
+
+                            onPostCreated(newPost)
+                            isUploading = false
+                            onDismiss()
+                        }
                     }
                 }
-            ) { Text("Post") }
+            ) {
+                Text(if (isUploading) "Posting..." else "Post")
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         title = { Text("Create Post") },
@@ -265,7 +312,6 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
 
                 Spacer(Modifier.height(8.dp))
 
-                // --- Image Picker Button ---
                 Button(
                     onClick = { imagePickerLauncher.launch("image/*") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1))
@@ -273,7 +319,6 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
                     Text(if (imageUri == null) "Add Photo" else "Change Photo")
                 }
 
-                // --- Preview selected image ---
                 imageUri?.let { uri ->
                     Spacer(Modifier.height(8.dp))
                     Image(
