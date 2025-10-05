@@ -1,6 +1,7 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.example.mobile_programming_project.ui
 
+import io.github.jan.supabase.storage.storage
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,14 +25,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.rememberAsyncImagePainter
+import coil.compose.AsyncImage
 import com.google.firebase.ktx.Firebase
-import com.google.firebase.storage.ktx.storage
 import com.google.firebase.firestore.ktx.firestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import com.example.mobile_programming_project.supabase
+
+private const val SUPABASE_BUCKET = "user-uploads"
 
 // ---------------------- DATA ----------------------
 data class Post(
@@ -42,10 +46,64 @@ data class Post(
     val content: String,
     val likes: Int,
     val comments: Int,
-    val imageUri: Uri? = null
+    val imageUrl: String? = null
 )
 
 val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety")
+
+// Demo posts for initial display
+val demoPost = listOf(
+    Post(
+        id = "demo1",
+        userName = "Edein Vindain",
+        timeAgo = "5 minutes",
+        category = "Lost & Found",
+        content = "Lost my water bottle. It looks like this.",
+        likes = 999,
+        comments = 320,
+        imageUrl = "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=500"
+    ),
+    Post(
+        id = "demo2",
+        userName = "Dian Cinne",
+        timeAgo = "10 minutes",
+        category = "Marketplace",
+        content = "Selling a used backpack.",
+        likes = 10,
+        comments = 300,
+        imageUrl = "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=500"
+    ),
+    Post(
+        id = "demo3",
+        userName = "Eat meat",
+        timeAgo = "23 minutes",
+        category = "Marketplace",
+        content = "I have an air mattress for sale. 27 dollars.",
+        likes = 5,
+        comments = 12,
+        imageUrl = "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=500"
+    ),
+    Post(
+        id = "demo4",
+        userName = "John Put",
+        timeAgo = "23 minutes",
+        category = "Safety",
+        content = "Someone stole my backpack. I think they're trying to sell in the marketplace",
+        likes = 45,
+        comments = 89,
+        imageUrl = null
+    ),
+    Post(
+        id = "demo5",
+        userName = "Dian Cinne",
+        timeAgo = "39 minutes",
+        category = "Safety",
+        content = "I was walking to the parking lot and saw a huge coyote. Be careful out there everyone.",
+        likes = 10,
+        comments = 300,
+        imageUrl = null
+    )
+)
 
 // ---------------------- HOME SCREEN ----------------------
 @Composable
@@ -55,24 +113,38 @@ fun HomeScreen(onSignOut: () -> Unit = {}) {
     var dropdownExpanded by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
     val posts = remember { mutableStateListOf<Post>() }
+    var isLoading by remember { mutableStateOf(true) }
 
-    // 🔥 Load Firestore posts on first render
+    // Load Firestore posts on first render
     LaunchedEffect(Unit) {
-        val snapshot = Firebase.firestore.collection("posts").get().await()
-        val loaded = snapshot.documents.map { doc ->
-            Post(
-                id = doc.id,
-                userName = doc.getString("userName") ?: "Unknown",
-                timeAgo = doc.getString("timeAgo") ?: "",
-                category = doc.getString("category") ?: "Home",
-                content = doc.getString("content") ?: "",
-                likes = (doc.getLong("likes") ?: 0).toInt(),
-                comments = (doc.getLong("comments") ?: 0).toInt(),
-                imageUri = doc.getString("imageUrl")?.let { Uri.parse(it) }
-            )
+        try {
+            val snapshot = Firebase.firestore.collection("posts").get().await()
+            val loaded = snapshot.documents.mapNotNull { doc ->
+                try {
+                    Post(
+                        id = doc.id,
+                        userName = doc.getString("userName") ?: "Unknown",
+                        timeAgo = doc.getString("timeAgo") ?: "",
+                        category = doc.getString("category") ?: "Home",
+                        content = doc.getString("content") ?: "",
+                        likes = (doc.getLong("likes") ?: 0).toInt(),
+                        comments = (doc.getLong("comments") ?: 0).toInt(),
+                        imageUrl = doc.getString("imageUrl")
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            posts.clear()
+            if (loaded.isEmpty()) {
+                posts.addAll(demoPost)
+            } else {
+                posts.addAll(loaded)
+            }
+        } catch (e: Exception) {
+            posts.addAll(demoPost)
         }
-        posts.clear()
-        posts.addAll(loaded)
+        isLoading = false
     }
 
     val filteredPosts = if (selectedCategory == "Home") posts
@@ -140,14 +212,20 @@ fun HomeScreen(onSignOut: () -> Unit = {}) {
                 )
             )
 
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(filteredPosts) { post ->
-                    PostCard(post = post, onCategoryClick = { clickedCategory ->
-                        selectedCategory = clickedCategory
-                    })
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color.White)
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(filteredPosts) { post ->
+                        PostCard(post = post, onCategoryClick = { clickedCategory ->
+                            selectedCategory = clickedCategory
+                        })
+                    }
                 }
             }
         }
@@ -182,10 +260,10 @@ private fun PostCard(post: Post, onCategoryClick: (String) -> Unit) {
             Spacer(Modifier.height(12.dp))
             Text(post.content, color = Color.White)
 
-            post.imageUri?.let { uri ->
+            post.imageUrl?.let { url ->
                 Spacer(Modifier.height(12.dp))
-                Image(
-                    painter = rememberAsyncImagePainter(uri),
+                AsyncImage(
+                    model = url,
                     contentDescription = "Post image",
                     modifier = Modifier
                         .fillMaxWidth()
@@ -230,14 +308,15 @@ private fun RowActions(likes: Int, comments: Int) {
 // ---------------------- CREATE POST DIALOG ----------------------
 @Composable
 fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
-    val storage = Firebase.storage
     val firestore = Firebase.firestore
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var text by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(categories.first { it != "Home" }) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var isUploading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -247,45 +326,59 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
-                enabled = !isUploading,
+                enabled = !isUploading && text.isNotBlank(),
                 onClick = {
                     if (text.isNotBlank()) {
                         isUploading = true
+                        errorMessage = null
                         coroutineScope.launch {
-                            var imageUrl: String? = null
-                            if (imageUri != null) {
-                                val fileName = "images/${System.currentTimeMillis()}.jpg"
-                                val ref = storage.reference.child(fileName)
-                                ref.putFile(imageUri!!).await()
-                                imageUrl = ref.downloadUrl.await().toString()
-                            }
+                            try {
+                                var imageUrl: String? = null
+                                if (imageUri != null) {
+                                    val bytes = context.contentResolver.openInputStream(imageUri!!)?.use {
+                                        it.readBytes()
+                                    }
+                                    if (bytes != null) {
+                                        val path = "images/${System.currentTimeMillis()}.jpg"
+                                        supabase.storage.from(SUPABASE_BUCKET).upload(
+                                            path = path,
+                                            data = bytes,
+                                            upsert = true
+                                        )
+                                        imageUrl = supabase.storage.from(SUPABASE_BUCKET).publicUrl(path)
+                                    }
+                                }
 
-                            val newPost = Post(
-                                id = System.currentTimeMillis().toString(),
-                                userName = "You",
-                                timeAgo = "Just now",
-                                category = selectedCategory,
-                                content = text,
-                                likes = 0,
-                                comments = 0,
-                                imageUri = imageUri
-                            )
-
-                            firestore.collection("posts").add(
-                                hashMapOf(
-                                    "userName" to newPost.userName,
-                                    "timeAgo" to newPost.timeAgo,
-                                    "category" to newPost.category,
-                                    "content" to newPost.content,
-                                    "likes" to newPost.likes,
-                                    "comments" to newPost.comments,
-                                    "imageUrl" to imageUrl
+                                val newPost = Post(
+                                    id = System.currentTimeMillis().toString(),
+                                    userName = "You",
+                                    timeAgo = "Just now",
+                                    category = selectedCategory,
+                                    content = text,
+                                    likes = 0,
+                                    comments = 0,
+                                    imageUrl = imageUrl
                                 )
-                            )
 
-                            onPostCreated(newPost)
-                            isUploading = false
-                            onDismiss()
+                                firestore.collection("posts").add(
+                                    hashMapOf(
+                                        "userName" to newPost.userName,
+                                        "timeAgo" to newPost.timeAgo,
+                                        "category" to newPost.category,
+                                        "content" to newPost.content,
+                                        "likes" to newPost.likes,
+                                        "comments" to newPost.comments,
+                                        "imageUrl" to imageUrl
+                                    )
+                                ).await()
+
+                                onPostCreated(newPost)
+                                isUploading = false
+                                onDismiss()
+                            } catch (e: Exception) {
+                                errorMessage = "Failed to create post: ${e.message}"
+                                isUploading = false
+                            }
                         }
                     }
                 }
@@ -293,7 +386,14 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
                 Text(if (isUploading) "Posting..." else "Post")
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isUploading
+            ) {
+                Text("Cancel")
+            }
+        },
         title = { Text("Create Post") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -302,27 +402,30 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
                     onValueChange = { text = it },
                     label = { Text("What's on your mind?") },
                     singleLine = false,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isUploading
                 )
 
                 DropdownMenuBox(
                     selected = selectedCategory,
-                    onSelect = { selectedCategory = it }
+                    onSelect = { selectedCategory = it },
+                    enabled = !isUploading
                 )
 
                 Spacer(Modifier.height(8.dp))
 
                 Button(
                     onClick = { imagePickerLauncher.launch("image/*") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1)),
+                    enabled = !isUploading
                 ) {
                     Text(if (imageUri == null) "Add Photo" else "Change Photo")
                 }
 
                 imageUri?.let { uri ->
                     Spacer(Modifier.height(8.dp))
-                    Image(
-                        painter = rememberAsyncImagePainter(uri),
+                    AsyncImage(
+                        model = uri,
                         contentDescription = "Selected image",
                         modifier = Modifier
                             .fillMaxWidth()
@@ -331,16 +434,26 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
                         contentScale = ContentScale.Crop
                     )
                 }
+
+                errorMessage?.let { msg ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(msg, color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     )
 }
 
 @Composable
-fun DropdownMenuBox(selected: String, onSelect: (String) -> Unit) {
+fun DropdownMenuBox(selected: String, onSelect: (String) -> Unit, enabled: Boolean = true) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        OutlinedButton(onClick = { expanded = true }) { Text(selected) }
+        OutlinedButton(
+            onClick = { expanded = true },
+            enabled = enabled
+        ) {
+            Text(selected)
+        }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             categories.filter { it != "Home" }.forEach {
                 DropdownMenuItem(text = { Text(it) }, onClick = {
