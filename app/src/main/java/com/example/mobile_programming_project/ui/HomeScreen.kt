@@ -5,7 +5,6 @@ import io.github.jan.supabase.storage.storage
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Send
@@ -28,12 +28,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.firestore.ktx.firestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import com.example.mobile_programming_project.supabase
+import com.example.mobile_programming_project.ui.components.NotificationBadge
+import com.example.mobile_programming_project.ui.components.NotificationToast
+import com.example.mobile_programming_project.viewmodel.NotificationViewModel
 
 private const val SUPABASE_BUCKET = "user-uploads"
 
@@ -107,7 +111,11 @@ val demoPost = listOf(
 
 // ---------------------- HOME SCREEN ----------------------
 @Composable
-fun HomeScreen(onSignOut: () -> Unit = {}) {
+fun HomeScreen(
+    onSignOut: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit = {},
+    viewModel: NotificationViewModel = viewModel()
+) {
     val gradient = Brush.verticalGradient(listOf(Color(0xFF1565C0), Color(0xFF42A5F5)))
     var selectedCategory by remember { mutableStateOf("Home") }
     var dropdownExpanded by remember { mutableStateOf(false) }
@@ -150,93 +158,132 @@ fun HomeScreen(onSignOut: () -> Unit = {}) {
     val filteredPosts = if (selectedCategory == "Home") posts
     else posts.filter { it.category.equals(selectedCategory, ignoreCase = true) }
 
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showCreatePost = true },
-                containerColor = Color(0xFF5E35B1),
-                contentColor = Color.White
-            ) {
-                Text("+", style = MaterialTheme.typography.headlineMedium)
+    // Wrap everything in Box to show toast overlay
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { showCreatePost = true },
+                    containerColor = Color(0xFF5E35B1),
+                    contentColor = Color.White
+                ) {
+                    Text("+", style = MaterialTheme.typography.headlineMedium)
+                }
             }
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(gradient)
-                .padding(paddingValues)
-        ) {
-            TopAppBar(
-                navigationIcon = {
-                    if (selectedCategory != "Home") {
-                        IconButton(onClick = { selectedCategory = "Home" }) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Home", tint = Color.White)
-                        }
-                    }
-                },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = selectedCategory.uppercase(),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFEAD6FF)
-                            )
-                        )
-                        IconButton(onClick = { dropdownExpanded = true }) {
-                            Icon(Icons.Filled.ArrowDropDown, contentDescription = "Select category", tint = Color.White)
-                        }
-                        DropdownMenu(
-                            expanded = dropdownExpanded,
-                            onDismissRequest = { dropdownExpanded = false }
-                        ) {
-                            categories.forEach { category ->
-                                DropdownMenuItem(
-                                    text = { Text(category) },
-                                    onClick = {
-                                        selectedCategory = category
-                                        dropdownExpanded = false
-                                    }
-                                )
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(gradient)
+                    .padding(paddingValues)
+            ) {
+                TopAppBar(
+                    navigationIcon = {
+                        if (selectedCategory != "Home") {
+                            IconButton(onClick = { selectedCategory = "Home" }) {
+                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Home", tint = Color.White)
                             }
                         }
-                    }
-                },
-                actions = {
-                    TextButton(onClick = onSignOut) { Text("Sign out", color = Color.White) }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    titleContentColor = Color.White
-                )
-            )
+                    },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = selectedCategory.uppercase(),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFEAD6FF)
+                                )
+                            )
+                            IconButton(onClick = { dropdownExpanded = true }) {
+                                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Select category", tint = Color.White)
+                            }
+                            DropdownMenu(
+                                expanded = dropdownExpanded,
+                                onDismissRequest = { dropdownExpanded = false }
+                            ) {
+                                categories.forEach { category ->
+                                    DropdownMenuItem(
+                                        text = { Text(category) },
+                                        onClick = {
+                                            selectedCategory = category
+                                            dropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    actions = {
+                        // NOTIFICATION BELL WITH BADGE
+                        Box {
+                            IconButton(onClick = onNavigateToNotifications) {
+                                Icon(
+                                    Icons.Default.Notifications,
+                                    contentDescription = "Notifications",
+                                    tint = Color.White
+                                )
+                            }
+                            // Badge positioned at top-right of bell icon
+                            if (viewModel.unreadCount.value > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(top = 8.dp, end = 8.dp)
+                                ) {
+                                    NotificationBadge(count = viewModel.unreadCount.value)
+                                }
+                            }
+                        }
 
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color.White)
-                }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    items(filteredPosts) { post ->
-                        PostCard(post = post, onCategoryClick = { clickedCategory ->
-                            selectedCategory = clickedCategory
-                        })
+                        TextButton(onClick = onSignOut) {
+                            Text("Sign out", color = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        titleContentColor = Color.White
+                    )
+                )
+
+                if (isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color.White)
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        items(filteredPosts) { post ->
+                            PostCard(post = post, onCategoryClick = { clickedCategory ->
+                                selectedCategory = clickedCategory
+                            })
+                        }
                     }
                 }
             }
+
+            if (showCreatePost) {
+                CreatePostDialog(
+                    onDismiss = { showCreatePost = false },
+                    onPostCreated = { newPost ->
+                        posts.add(0, newPost)
+                        showCreatePost = false
+                    }
+                )
+            }
         }
 
-        if (showCreatePost) {
-            CreatePostDialog(
-                onDismiss = { showCreatePost = false },
-                onPostCreated = { newPost ->
-                    posts.add(0, newPost)
-                    showCreatePost = false
-                }
+        // TOAST NOTIFICATION OVERLAY (appears on top of everything)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .padding(top = 70.dp) // Position below the TopAppBar
+        ) {
+            NotificationToast(
+                notification = viewModel.currentToast.value,
+                onDismiss = { viewModel.dismissToast() }
             )
         }
     }

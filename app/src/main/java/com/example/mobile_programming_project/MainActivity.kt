@@ -9,9 +9,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.mobile_programming_project.ui.LoginScreen
+import com.example.mobile_programming_project.ui.HomeScreen
+import com.example.mobile_programming_project.ui.NotificationScreen
 import com.example.mobile_programming_project.ui.theme.MobileProgrammingProjectTheme
 import com.google.firebase.auth.FirebaseAuth
-import com.example.mobile_programming_project.ui.HomeScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -50,7 +51,15 @@ private fun AppNav(auth: FirebaseAuth) {
                     nav.navigate("login") {
                         popUpTo("home") { inclusive = true }
                     }
+                },
+                onNavigateToNotifications = {
+                    nav.navigate("notifications")
                 }
+            )
+        }
+        composable("notifications") {
+            NotificationScreen(
+                onBack = { nav.popBackStack() }
             )
         }
     }
