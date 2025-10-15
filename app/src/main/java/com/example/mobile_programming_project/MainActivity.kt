@@ -4,63 +4,44 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.example.mobile_programming_project.ui.LoginScreen
-import com.example.mobile_programming_project.ui.HomeScreen
-import com.example.mobile_programming_project.ui.NotificationScreen
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import com.example.mobile_programming_project.ui.theme.MobileProgrammingProjectTheme
-import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
-
-    private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
         setContent {
             MobileProgrammingProjectTheme {
-                AppNav(auth = auth)
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    Greeting(
+                        name = "Android",
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun AppNav(auth: FirebaseAuth) {
-    val nav = rememberNavController()
-    val startDestination = if (auth.currentUser == null) "login" else "home"
+fun Greeting(name: String, modifier: Modifier = Modifier) {
+    Text(
+        text = "Hello $name!",
+        modifier = modifier
+    )
+}
 
-    NavHost(navController = nav, startDestination = startDestination) {
-        composable("login") {
-            LoginScreen(auth = auth) {
-                // When login succeeds → go to home and clear login from back stack
-                nav.navigate("home") {
-                    popUpTo("login") { inclusive = true }
-                }
-            }
-        }
-        composable("home") {
-            HomeScreen(
-                onSignOut = {
-                    auth.signOut()
-                    nav.navigate("login") {
-                        popUpTo("home") { inclusive = true }
-                    }
-                },
-                onNavigateToNotifications = {
-                    nav.navigate("notifications")
-                }
-            )
-        }
-        composable("notifications") {
-            NotificationScreen(
-                onBack = { nav.popBackStack() }
-            )
-        }
+@Preview(showBackground = true)
+@Composable
+fun GreetingPreview() {
+    MobileProgrammingProjectTheme {
+        Greeting("Android")
     }
 }
