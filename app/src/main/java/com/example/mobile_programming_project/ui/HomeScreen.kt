@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,30 +31,31 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import com.example.mobile_programming_project.supabase
 import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
+import com.example.mobile_programming_project.ui.components.CommentDialog
+import com.example.mobile_programming_project.ui.components.LikeButton
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
 
 private const val SUPABASE_BUCKET = "user-uploads"
 
-// ---------------------- DATA ----------------------
 data class Post(
     val id: String,
     val userName: String,
     val timeAgo: String,
     val category: String,
     val content: String,
-    val likes: Int,
-    val comments: Int,
+    var likes: Int,
+    var comments: Int,
     val imageUrl: String? = null
 )
 
 val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety")
 
-// Demo posts for initial display
 val demoPost = listOf(
     Post(
         id = "demo1",
@@ -109,7 +109,6 @@ val demoPost = listOf(
     )
 )
 
-// ---------------------- HOME SCREEN ----------------------
 @Composable
 fun HomeScreen(
     onSignOut: () -> Unit = {},
@@ -122,8 +121,8 @@ fun HomeScreen(
     var showCreatePost by remember { mutableStateOf(false) }
     val posts = remember { mutableStateListOf<Post>() }
     var isLoading by remember { mutableStateOf(true) }
+    val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
 
-    // Load Firestore posts on first render
     LaunchedEffect(Unit) {
         try {
             val snapshot = Firebase.firestore.collection("posts").get().await()
@@ -158,7 +157,6 @@ fun HomeScreen(
     val filteredPosts = if (selectedCategory == "Home") posts
     else posts.filter { it.category.equals(selectedCategory, ignoreCase = true) }
 
-    // Wrap everything in Box to show toast overlay
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             floatingActionButton = {
@@ -214,7 +212,6 @@ fun HomeScreen(
                         }
                     },
                     actions = {
-                        // NOTIFICATION BELL WITH BADGE
                         Box {
                             IconButton(onClick = onNavigateToNotifications) {
                                 Icon(
@@ -223,7 +220,6 @@ fun HomeScreen(
                                     tint = Color.White
                                 )
                             }
-                            // Badge positioned at top-right of bell icon
                             if (viewModel.unreadCount.value > 0) {
                                 Box(
                                     modifier = Modifier
@@ -255,9 +251,16 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         items(filteredPosts) { post ->
-                            PostCard(post = post, onCategoryClick = { clickedCategory ->
-                                selectedCategory = clickedCategory
-                            })
+                            PostCard(
+                                post = post,
+                                currentUserEmail = currentUserEmail,
+                                onCategoryClick = { clickedCategory ->
+                                    selectedCategory = clickedCategory
+                                },
+                                onLikeChange = { newLikeCount ->
+                                    post.likes = newLikeCount
+                                }
+                            )
                         }
                     }
                 }
@@ -274,12 +277,11 @@ fun HomeScreen(
             }
         }
 
-        // TOAST NOTIFICATION OVERLAY (appears on top of everything)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(top = 70.dp) // Position below the TopAppBar
+                .padding(top = 70.dp)
         ) {
             NotificationToast(
                 notification = viewModel.currentToast.value,
@@ -289,9 +291,15 @@ fun HomeScreen(
     }
 }
 
-// ---------------------- POST CARD ----------------------
 @Composable
-private fun PostCard(post: Post, onCategoryClick: (String) -> Unit) {
+private fun PostCard(
+    post: Post,
+    currentUserEmail: String?,
+    onCategoryClick: (String) -> Unit,
+    onLikeChange: (Int) -> Unit
+) {
+    var showCommentDialog by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF2458B6).copy(alpha = 0.65f)),
@@ -321,28 +329,45 @@ private fun PostCard(post: Post, onCategoryClick: (String) -> Unit) {
             }
 
             Spacer(Modifier.height(12.dp))
-            RowActions(likes = post.likes, comments = post.comments)
+            RowActions(
+                post = post,
+                onCommentClick = { showCommentDialog = true },
+                onLikeChange = onLikeChange
+            )
         }
+    }
+
+    if (showCommentDialog) {
+        CommentDialog(
+            postId = post.id,
+            onDismiss = { showCommentDialog = false },
+            currentUserEmail = currentUserEmail
+        )
     }
 }
 
 @Composable
-private fun RowActions(likes: Int, comments: Int) {
+private fun RowActions(
+    post: Post,
+    onCommentClick: () -> Unit,
+    onLikeChange: (Int) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = { }) {
-            Icon(Icons.Outlined.FavoriteBorder, contentDescription = "Like", tint = Color.White)
-        }
-        Text("$likes", color = Color.White)
+        LikeButton(
+            postId = post.id,
+            initialLikeCount = post.likes,
+            onLikeChange = onLikeChange
+        )
 
         Spacer(Modifier.weight(1f))
 
-        IconButton(onClick = { }) {
+        IconButton(onClick = onCommentClick) {
             Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "Comments", tint = Color.White)
         }
-        Text("$comments", color = Color.White)
+        Text("${post.comments}", color = Color.White)
 
         Spacer(Modifier.weight(1f))
 
@@ -352,7 +377,6 @@ private fun RowActions(likes: Int, comments: Int) {
     }
 }
 
-// ---------------------- CREATE POST DIALOG ----------------------
 @Composable
 fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
     val firestore = Firebase.firestore
