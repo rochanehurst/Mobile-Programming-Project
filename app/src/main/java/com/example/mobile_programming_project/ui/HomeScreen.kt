@@ -107,7 +107,10 @@ val demoPost = listOf(
 
 // ---------------------- HOME SCREEN ----------------------
 @Composable
-fun HomeScreen(onSignOut: () -> Unit = {}) {
+fun HomeScreen(
+    onSignOut: () -> Unit = {},
+    onSafetyClick: () -> Unit = {}
+) {
     val gradient = Brush.verticalGradient(listOf(Color(0xFF1565C0), Color(0xFF42A5F5)))
     var selectedCategory by remember { mutableStateOf("Home") }
     var dropdownExpanded by remember { mutableStateOf(false) }
@@ -211,6 +214,23 @@ fun HomeScreen(onSignOut: () -> Unit = {}) {
                     titleContentColor = Color.White
                 )
             )
+
+            if (selectedCategory.equals("Safety", ignoreCase = true)) {
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = onSafetyClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1))
+                ) {
+                    Text("Report a Safety Concern", color = Color.White)
+                }
+
+                Spacer(Modifier.height(8.dp))
+            }
+
 
             if (isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

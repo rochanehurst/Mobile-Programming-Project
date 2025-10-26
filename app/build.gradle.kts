@@ -59,6 +59,7 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:storage-kt")
     implementation("io.github.jan-tennert.supabase:gotrue-kt")
     implementation("io.ktor:ktor-client-android:2.3.7")
+    implementation(libs.androidx.compose.foundation)
 
     // --- Testing ---
     testImplementation(libs.junit)

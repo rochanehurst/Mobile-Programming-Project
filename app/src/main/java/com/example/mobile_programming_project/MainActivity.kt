@@ -12,6 +12,7 @@ import com.example.mobile_programming_project.ui.LoginScreen
 import com.example.mobile_programming_project.ui.theme.MobileProgrammingProjectTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.example.mobile_programming_project.ui.HomeScreen
+import com.example.mobile_programming_project.ui.SafetyReportScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -50,8 +51,15 @@ private fun AppNav(auth: FirebaseAuth) {
                     nav.navigate("login") {
                         popUpTo("home") { inclusive = true }
                     }
-                }
+                },
+                onSafetyClick = { nav.navigate("safety_report") }
             )
         }
+
+
+        composable("safety_report") {
+            SafetyReportScreen(onBack = { nav.popBackStack() })
+        }
+
     }
 }
