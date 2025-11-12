@@ -38,6 +38,7 @@ import com.example.mobile_programming_project.supabase
 import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
+import com.example.mobile_programming_project.ui.components.SafetyReportDialog
 
 private const val SUPABASE_BUCKET = "user-uploads"
 
@@ -120,6 +121,7 @@ fun HomeScreen(
     var selectedCategory by remember { mutableStateOf("Home") }
     var dropdownExpanded by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
+    var selectedPostCategory by remember { mutableStateOf<String?> (null)}
     val posts = remember { mutableStateListOf<Post>() }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -264,13 +266,42 @@ fun HomeScreen(
             }
 
             if (showCreatePost) {
-                CreatePostDialog(
-                    onDismiss = { showCreatePost = false },
-                    onPostCreated = { newPost ->
-                        posts.add(0, newPost)
-                        showCreatePost = false
-                    }
-                )
+                if (selectedPostCategory == null) {
+                    CategorySelectionDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onCategorySelected = { category ->
+                            selectedPostCategory = category
+                        }
+                    )
+                } else if (selectedPostCategory == "Safety") {
+                    SafetyReportDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onReportSubmitted = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
+                } else {
+                    CreatePostDialogWithCategory(
+                        category = selectedPostCategory!!,
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onPostCreated = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
+                }
             }
         }
 
@@ -287,6 +318,159 @@ fun HomeScreen(
             )
         }
     }
+}
+
+// ---------------------- CREATE POST DIALOG (WITH CATEGORY) ----------------------
+@Composable
+fun CategorySelectionDialog(
+    onDismiss: () -> Unit,
+    onCategorySelected: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Category") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                categories.filter { it != "Home" }.forEach { category ->
+                    OutlinedButton(
+                        onClick = { onCategorySelected(category) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            category,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun CreatePostDialogWithCategory(
+    category: String,
+    onDismiss: () -> Unit,
+    onPostCreated: (Post) -> Unit
+) {
+    val firestore = Firebase.firestore
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    var text by remember { mutableStateOf("") }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri -> imageUri = uri }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                enabled = !isUploading && text.isNotBlank(),
+                onClick = {
+                    if (text.isNotBlank()) {
+                        isUploading = true
+                        errorMessage = null
+                        coroutineScope.launch {
+                            try {
+                                var imageUrl: String? = null
+                                if (imageUri != null) {
+                                    val bytes = context.contentResolver.openInputStream(imageUri!!)?.use { it.readBytes() }
+                                    if (bytes != null) {
+                                        val path = "images/${System.currentTimeMillis()}.jpg"
+                                        supabase.storage.from(SUPABASE_BUCKET).upload(path, bytes, upsert = true)
+                                        imageUrl = supabase.storage.from(SUPABASE_BUCKET).publicUrl(path)
+                                    }
+                                }
+
+                                val newPost = Post(
+                                    id = System.currentTimeMillis().toString(),
+                                    userName = "You",
+                                    timeAgo = "Just now",
+                                    category = category,
+                                    content = text,
+                                    likes = 0,
+                                    comments = 0,
+                                    imageUrl = imageUrl
+                                )
+
+                                firestore.collection("posts").add(
+                                    hashMapOf(
+                                        "userName" to newPost.userName,
+                                        "timeAgo" to newPost.timeAgo,
+                                        "category" to newPost.category,
+                                        "content" to newPost.content,
+                                        "likes" to newPost.likes,
+                                        "comments" to newPost.comments,
+                                        "imageUrl" to imageUrl
+                                    )
+                                ).await()
+
+                                onPostCreated(newPost)
+                                isUploading = false
+                                onDismiss()
+                            } catch (e: Exception) {
+                                errorMessage = "Failed to create post: ${e.message}"
+                                isUploading = false
+                            }
+                        }
+                    }
+                }
+            ) { Text(if (isUploading) "Posting..." else "Post") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isUploading) { Text("Cancel") }
+        },
+        title = { Text("Create Post - $category") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("What's on your mind?") },
+                    singleLine = false,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isUploading
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = { imagePickerLauncher.launch("image/*") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1)),
+                    enabled = !isUploading
+                ) { Text(if (imageUri == null) "Add Photo" else "Change Photo") }
+
+                imageUri?.let { uri ->
+                    Spacer(Modifier.height(8.dp))
+                    AsyncImage(
+                        model = uri,
+                        contentDescription = "Selected image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+
+                errorMessage?.let { msg ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(msg, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    )
 }
 
 // ---------------------- POST CARD ----------------------
@@ -353,144 +537,6 @@ private fun RowActions(likes: Int, comments: Int) {
 }
 
 // ---------------------- CREATE POST DIALOG ----------------------
-@Composable
-fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
-    val firestore = Firebase.firestore
-    val coroutineScope = rememberCoroutineScope()
-    val context = LocalContext.current
-
-    var text by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf(categories.first { it != "Home" }) }
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var isUploading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri -> if (uri != null) imageUri = uri }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                enabled = !isUploading && text.isNotBlank(),
-                onClick = {
-                    if (text.isNotBlank()) {
-                        isUploading = true
-                        errorMessage = null
-                        coroutineScope.launch {
-                            try {
-                                var imageUrl: String? = null
-                                if (imageUri != null) {
-                                    val bytes = context.contentResolver.openInputStream(imageUri!!)?.use {
-                                        it.readBytes()
-                                    }
-                                    if (bytes != null) {
-                                        val path = "images/${System.currentTimeMillis()}.jpg"
-                                        supabase.storage.from(SUPABASE_BUCKET).upload(
-                                            path = path,
-                                            data = bytes,
-                                            upsert = true
-                                        )
-                                        imageUrl = supabase.storage.from(SUPABASE_BUCKET).publicUrl(path)
-                                    }
-                                }
-
-                                val newPost = Post(
-                                    id = System.currentTimeMillis().toString(),
-                                    userName = "You",
-                                    timeAgo = "Just now",
-                                    category = selectedCategory,
-                                    content = text,
-                                    likes = 0,
-                                    comments = 0,
-                                    imageUrl = imageUrl
-                                )
-
-                                firestore.collection("posts").add(
-                                    hashMapOf(
-                                        "userName" to newPost.userName,
-                                        "timeAgo" to newPost.timeAgo,
-                                        "category" to newPost.category,
-                                        "content" to newPost.content,
-                                        "likes" to newPost.likes,
-                                        "comments" to newPost.comments,
-                                        "imageUrl" to imageUrl
-                                    )
-                                ).await()
-
-                                onPostCreated(newPost)
-                                isUploading = false
-                                onDismiss()
-                            } catch (e: Exception) {
-                                errorMessage = "Failed to create post: ${e.message}"
-                                isUploading = false
-                            }
-                        }
-                    }
-                }
-            ) {
-                Text(if (isUploading) "Posting..." else "Post")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !isUploading
-            ) {
-                Text("Cancel")
-            }
-        },
-        title = { Text("Create Post") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("What's on your mind?") },
-                    singleLine = false,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isUploading
-                )
-
-                DropdownMenuBox(
-                    selected = selectedCategory,
-                    onSelect = { selectedCategory = it },
-                    enabled = !isUploading
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                Button(
-                    onClick = { imagePickerLauncher.launch("image/*") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1)),
-                    enabled = !isUploading
-                ) {
-                    Text(if (imageUri == null) "Add Photo" else "Change Photo")
-                }
-
-                imageUri?.let { uri ->
-                    Spacer(Modifier.height(8.dp))
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = "Selected image",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-
-                errorMessage?.let { msg ->
-                    Spacer(Modifier.height(8.dp))
-                    Text(msg, color = MaterialTheme.colorScheme.error)
-                }
-            }
-        }
-    )
-}
-
 @Composable
 fun DropdownMenuBox(selected: String, onSelect: (String) -> Unit, enabled: Boolean = true) {
     var expanded by remember { mutableStateOf(false) }
