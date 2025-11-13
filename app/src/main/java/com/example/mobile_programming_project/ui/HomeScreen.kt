@@ -268,6 +268,7 @@ fun HomeScreen(
 
             if (showCreatePost) {
                 if (selectedPostCategory == null) {
+                    //Show category selection
                     CategorySelectionDialog(
                         onDismiss = {
                             showCreatePost = false
@@ -277,8 +278,21 @@ fun HomeScreen(
                             selectedPostCategory = category
                         }
                     )
+                } else if (selectedPostCategory == "Safety") {
+                    //Show Safety-specific dialog
+                    SafetyReportDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onReportSubmitted = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
                 } else if (selectedPostCategory == "Marketplace") {
-                    // NEW MARKETPLACE DIALOG
+                    //Show Marketplace-specific dialog
                     MarketplacePostDialog(
                         onDismiss = {
                             showCreatePost = false
