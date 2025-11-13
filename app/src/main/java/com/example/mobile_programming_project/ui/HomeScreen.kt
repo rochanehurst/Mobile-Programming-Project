@@ -39,6 +39,7 @@ import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
 import com.example.mobile_programming_project.ui.components.SafetyReportDialog
+import com.example.mobile_programming_project.ui.components.MarketplacePostDialog
 
 private const val SUPABASE_BUCKET = "user-uploads"
 
@@ -276,19 +277,21 @@ fun HomeScreen(
                             selectedPostCategory = category
                         }
                     )
-                } else if (selectedPostCategory == "Safety") {
-                    SafetyReportDialog(
+                } else if (selectedPostCategory == "Marketplace") {
+                    // NEW MARKETPLACE DIALOG
+                    MarketplacePostDialog(
                         onDismiss = {
                             showCreatePost = false
                             selectedPostCategory = null
                         },
-                        onReportSubmitted = { newPost ->
+                        onPostSubmitted = { newPost ->
                             posts.add(0, newPost)
                             showCreatePost = false
                             selectedPostCategory = null
                         }
                     )
                 } else {
+                    // For Lost & Found and other categories
                     CreatePostDialogWithCategory(
                         category = selectedPostCategory!!,
                         onDismiss = {
