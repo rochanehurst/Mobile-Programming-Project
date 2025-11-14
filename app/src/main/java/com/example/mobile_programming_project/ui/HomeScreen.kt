@@ -35,6 +35,7 @@ import com.google.firebase.firestore.ktx.firestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import com.example.mobile_programming_project.supabase
+import com.example.mobile_programming_project.ui.components.LostAndFoundPostDialog
 import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
@@ -55,7 +56,7 @@ data class Post(
     val imageUrl: String? = null
 )
 
-val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety")
+val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety", "Other")
 
 // Demo posts for initial display
 val demoPost = listOf(
@@ -304,8 +305,21 @@ fun HomeScreen(
                             selectedPostCategory = null
                         }
                     )
+                } else if (selectedPostCategory == "Lost & Found") {
+                    //Show Lost & Found-specific dialog
+                    LostAndFoundPostDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onPostSubmitted = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
                 } else {
-                    // For Lost & Found and other categories
+                    //other categories
                     CreatePostDialogWithCategory(
                         category = selectedPostCategory!!,
                         onDismiss = {
@@ -321,6 +335,7 @@ fun HomeScreen(
                 }
             }
         }
+
 
         // TOAST NOTIFICATION OVERLAY (appears on top of everything)
         Box(
