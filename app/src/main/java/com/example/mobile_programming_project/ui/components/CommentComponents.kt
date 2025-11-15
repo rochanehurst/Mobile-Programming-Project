@@ -1,9 +1,10 @@
-// ===== UI COMPONENTS FILE =====
-
+// ===== UI COMPONENTS FILE - FIXED VERSION =====
 
 package com.example.mobile_programming_project.ui.components
 
+import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +24,7 @@ import com.example.mobile_programming_project.FirestoreManager
 import com.example.mobile_programming_project.data.Comment
 import kotlinx.coroutines.launch
 
+// ===== COMMENT DIALOG - FIXED =====
 @Composable
 fun CommentDialog(
     postId: String,
@@ -34,10 +36,23 @@ fun CommentDialog(
     var isLoading by remember { mutableStateOf(true) }
     var newCommentText by remember { mutableStateOf("") }
     var isPosting by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    // Load comments when dialog opens
     LaunchedEffect(postId) {
+        Log.d("CommentDialog", "Loading comments for postId: $postId")
         isLoading = true
-        comments = FirestoreManager.getComments(postId)
+        try {
+            val loadedComments = FirestoreManager.getComments(postId)
+            comments = loadedComments
+            Log.d("CommentDialog", "Loaded ${loadedComments.size} comments")
+            loadedComments.forEach { comment ->
+                Log.d("CommentDialog", "Comment: ${comment.userName} - ${comment.content}")
+            }
+        } catch (e: Exception) {
+            Log.e("CommentDialog", "Error loading comments", e)
+            errorMessage = "Failed to load comments: ${e.message}"
+        }
         isLoading = false
     }
 
@@ -50,6 +65,16 @@ fun CommentDialog(
                     .fillMaxWidth()
                     .heightIn(max = 400.dp)
             ) {
+                // Show error if any
+                errorMessage?.let { error ->
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
                 if (isLoading) {
                     Box(
                         modifier = Modifier
@@ -66,18 +91,33 @@ fun CommentDialog(
                             .height(150.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("No comments yet", color = Color.Gray)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No comments yet", color = Color.Gray)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Be the first to comment!",
+                                color = Color.Gray,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(comments) { comment ->
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.heightIn(max = 250.dp)
+                    ) {
+                        items(comments, key = { it.id }) { comment ->
                             CommentItem(
                                 comment = comment,
                                 currentUserEmail = currentUserEmail,
                                 onDelete = {
                                     coroutineScope.launch {
+                                        Log.d("CommentDialog", "Deleting comment: ${comment.id}")
                                         if (FirestoreManager.deleteComment(comment.id, postId)) {
                                             comments = comments.filter { it.id != comment.id }
+                                            Log.d("CommentDialog", "Comment deleted successfully")
+                                        } else {
+                                            Log.e("CommentDialog", "Failed to delete comment")
                                         }
                                     }
                                 }
@@ -107,9 +147,22 @@ fun CommentDialog(
                         if (newCommentText.isNotBlank()) {
                             isPosting = true
                             coroutineScope.launch {
-                                if (FirestoreManager.addComment(postId, newCommentText)) {
-                                    newCommentText = ""
-                                    comments = FirestoreManager.getComments(postId)
+                                Log.d("CommentDialog", "Posting comment: $newCommentText")
+                                try {
+                                    if (FirestoreManager.addComment(postId, newCommentText)) {
+                                        Log.d("CommentDialog", "Comment posted successfully")
+                                        newCommentText = ""
+                                        // Reload comments
+                                        val updatedComments = FirestoreManager.getComments(postId)
+                                        comments = updatedComments
+                                        Log.d("CommentDialog", "Reloaded ${updatedComments.size} comments after posting")
+                                    } else {
+                                        Log.e("CommentDialog", "Failed to post comment")
+                                        errorMessage = "Failed to post comment"
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("CommentDialog", "Error posting comment", e)
+                                    errorMessage = "Error: ${e.message}"
                                 }
                                 isPosting = false
                             }
@@ -183,6 +236,7 @@ fun CommentItem(
     }
 }
 
+// ===== LIKE BUTTON (with clickable count to show who liked) =====
 @Composable
 fun LikeButton(
     postId: String,
@@ -193,6 +247,7 @@ fun LikeButton(
     var likeCount by remember { mutableStateOf(initialLikeCount) }
     var isLiked by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
+    var showWhoLiked by remember { mutableStateOf(false) }
 
     LaunchedEffect(postId) {
         isLiked = FirestoreManager.checkIfLiked(postId)
@@ -230,6 +285,113 @@ fun LikeButton(
                 modifier = Modifier.size(20.dp)
             )
         }
-        Text(likeCount.toString(), color = Color.White)
+
+        // Make the like count clickable to show who liked
+        Text(
+            text = likeCount.toString(),
+            color = Color.White,
+            modifier = Modifier.clickable {
+                if (likeCount > 0) {
+                    showWhoLiked = true
+                }
+            }
+        )
     }
+
+    // Show dialog with list of users who liked
+    if (showWhoLiked) {
+        LikesListDialog(
+            postId = postId,
+            onDismiss = { showWhoLiked = false }
+        )
+    }
+}
+
+// ===== LIKES LIST DIALOG =====
+@Composable
+fun LikesListDialog(
+    postId: String,
+    onDismiss: () -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var users by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(postId) {
+        coroutineScope.launch {
+            isLoading = true
+            users = FirestoreManager.getWhoLiked(postId)
+            Log.d("LikesListDialog", "Loaded ${users.size} users who liked")
+            isLoading = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Liked by") },
+        text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 300.dp)
+            ) {
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else if (users.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No likes yet", color = Color.Gray)
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(users) { userName ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFFF5F5F5)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Favorite,
+                                        contentDescription = null,
+                                        tint = Color.Red,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = userName,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }

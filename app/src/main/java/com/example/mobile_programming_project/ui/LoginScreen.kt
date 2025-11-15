@@ -1,6 +1,6 @@
 package com.example.mobile_programming_project.ui
 
-import android.app.Activity
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -77,7 +77,8 @@ fun LoginScreen(
                 label = { Text("Email") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(50)
+                shape = RoundedCornerShape(50),
+                enabled = !isLoading
             )
 
             Spacer(Modifier.height(12.dp))
@@ -89,7 +90,8 @@ fun LoginScreen(
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(50)
+                shape = RoundedCornerShape(50),
+                enabled = !isLoading
             )
 
             Spacer(Modifier.height(16.dp))
@@ -97,6 +99,8 @@ fun LoginScreen(
             Button(
                 onClick = {
                     isLoading = true
+                    errorMessage = null
+
                     auth.signInWithEmailAndPassword(email, password)
                         .addOnCompleteListener { task ->
                             isLoading = false
@@ -108,7 +112,21 @@ fun LoginScreen(
                                 ).show()
                                 onLoginSuccess()
                             } else {
-                                errorMessage = task.exception?.message
+                                val exception = task.exception
+                                Log.e("LoginError", "Login failed: ${exception?.message}", exception)
+
+                                errorMessage = when {
+                                    exception?.message?.contains("network", ignoreCase = true) == true ->
+                                        "Network error. Check your internet connection."
+                                    exception?.message?.contains("password", ignoreCase = true) == true ->
+                                        "Invalid email or password"
+                                    exception?.message?.contains("user", ignoreCase = true) == true ||
+                                            exception?.message?.contains("record", ignoreCase = true) == true ->
+                                        "User not found. Please check your email."
+                                    exception?.message?.contains("email", ignoreCase = true) == true ->
+                                        "Invalid email format"
+                                    else -> exception?.message ?: "Login failed. Please try again."
+                                }
                             }
                         }
                 },
@@ -116,20 +134,25 @@ fun LoginScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
-                    .clip(RoundedCornerShape(50))
+                    .clip(RoundedCornerShape(50)),
+                enabled = !isLoading && email.isNotBlank() && password.isNotBlank()
             ) {
                 Text(if (isLoading) "Logging in..." else "Sign in", fontSize = 18.sp)
             }
 
             errorMessage?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
+                Text(
+                    text = it,
+                    color = Color(0xFFFFCDD2),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
 
             Spacer(Modifier.height(16.dp))
 
             Row {
-                Text("Don’t have an account?", color = Color.White)
+                Text("Don't have an account?", color = Color.White)
                 Spacer(Modifier.width(4.dp))
                 TextButton(onClick = { /* TODO: Navigate to Sign Up */ }) {
                     Text("Sign up", color = Color.White)

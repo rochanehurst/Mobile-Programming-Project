@@ -1,9 +1,6 @@
-
-// ===== FIRESTORE MANAGER =====
-
-
 package com.example.mobile_programming_project
 
+import android.util.Log
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.auth.FirebaseAuth
@@ -14,24 +11,23 @@ object FirestoreManager {
     private val firestore = Firebase.firestore
     private val auth = FirebaseAuth.getInstance()
 
-    // ===== LIKES =====
     suspend fun addLike(postId: String): Boolean {
         return try {
             val userId = auth.currentUser?.uid ?: return false
             val likeId = "$postId-$userId"
+            val userName = auth.currentUser?.email?.substringBefore("@") ?: "Unknown"
 
             firestore.collection("likes").document(likeId).set(
                 mapOf(
                     "postId" to postId,
-                    "userId" to userId
+                    "userId" to userId,
+                    "userName" to userName
                 )
             ).await()
 
-            // Increment likes count on post
             firestore.collection("posts").document(postId)
                 .update("likes", com.google.firebase.firestore.FieldValue.increment(1))
                 .await()
-
             true
         } catch (e: Exception) {
             false
@@ -45,11 +41,9 @@ object FirestoreManager {
 
             firestore.collection("likes").document(likeId).delete().await()
 
-            // Decrement likes count on post
             firestore.collection("posts").document(postId)
                 .update("likes", com.google.firebase.firestore.FieldValue.increment(-1))
                 .await()
-
             true
         } catch (e: Exception) {
             false
@@ -60,7 +54,6 @@ object FirestoreManager {
         return try {
             val userId = auth.currentUser?.uid ?: return false
             val likeId = "$postId-$userId"
-
             val doc = firestore.collection("likes").document(likeId).get().await()
             doc.exists()
         } catch (e: Exception) {
@@ -68,7 +61,20 @@ object FirestoreManager {
         }
     }
 
-    // ===== COMMENTS =====
+    suspend fun getWhoLiked(postId: String): List<String> {
+        return try {
+            val snapshot = firestore.collection("likes")
+                .whereEqualTo("postId", postId)
+                .get()
+                .await()
+            snapshot.documents.mapNotNull { doc ->
+                doc.getString("userName") ?: doc.getString("userId")
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     suspend fun addComment(postId: String, content: String): Boolean {
         return try {
             val userId = auth.currentUser?.uid ?: return false
@@ -84,11 +90,9 @@ object FirestoreManager {
                 )
             ).await()
 
-            // Increment comments count on post
             firestore.collection("posts").document(postId)
                 .update("comments", com.google.firebase.firestore.FieldValue.increment(1))
                 .await()
-
             true
         } catch (e: Exception) {
             false
@@ -97,11 +101,18 @@ object FirestoreManager {
 
     suspend fun getComments(postId: String): List<Comment> {
         return try {
-            val snapshot = firestore.collection("comments")
-                .whereEqualTo("postId", postId)
-                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .get()
-                .await()
+            val snapshot = try {
+                firestore.collection("comments")
+                    .whereEqualTo("postId", postId)
+                    .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                    .get()
+                    .await()
+            } catch (e: Exception) {
+                firestore.collection("comments")
+                    .whereEqualTo("postId", postId)
+                    .get()
+                    .await()
+            }
 
             snapshot.documents.mapNotNull { doc ->
                 try {
@@ -124,12 +135,9 @@ object FirestoreManager {
     suspend fun deleteComment(commentId: String, postId: String): Boolean {
         return try {
             firestore.collection("comments").document(commentId).delete().await()
-
-            // Decrement comments count on post
             firestore.collection("posts").document(postId)
                 .update("comments", com.google.firebase.firestore.FieldValue.increment(-1))
                 .await()
-
             true
         } catch (e: Exception) {
             false
