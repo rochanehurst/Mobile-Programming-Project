@@ -3,102 +3,237 @@ package com.example.mobile_programming_project.viewmodel
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.mobile_programming_project.data.Notifications
 import com.example.mobile_programming_project.data.NotificationType
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class NotificationViewModel : ViewModel() {
+    private val firestore = Firebase.firestore
+    private val auth = FirebaseAuth.getInstance()
 
-    // List of all notifications
+    // Observable notifications list
     val notifications = mutableStateListOf<Notifications>()
-
-    // Currently showing toast notification
-    val currentToast = mutableStateOf<Notifications?>(null)
 
     // Unread count
     val unreadCount = mutableStateOf(0)
 
+    // Current toast to display
+    val currentToast = mutableStateOf<Notifications?>(null)
+
     init {
-        // TODO: REPLACE THIS WITH FIREBASE LISTENER
-        loadMockNotifications()
+        loadNotifications()
+        listenForNewNotifications()
     }
 
-    // Mock data - your partner will replace with Firebase queries
-    private fun loadMockNotifications() {
-        notifications.addAll(listOf(
-            Notifications(
-                id = "1",
-                title = "Item Inquiry",
-                message = "Sarah Chen is interested in your textbook",
-                type = NotificationType.MARKETPLACE,
-                timestamp = System.currentTimeMillis() - 3600000,
-                isRead = false,
-                senderName = "Sarah Chen"
-            ),
-            Notifications(
-                id = "2",
-                title = "Item Found!",
-                message = "Your lost wallet may have been found",
-                type = NotificationType.LOST_AND_FOUND,
-                timestamp = System.currentTimeMillis() - 7200000,
-                isRead = false
-            ),
-            Notifications(
-                id = "3",
-                title = "Safety Alert",
-                message = "Incident reported near Library - stay alert",
-                type = NotificationType.SAFETY,
-                timestamp = System.currentTimeMillis() - 10800000,
-                isRead = true
-            )
-        ))
-        updateUnreadCount()
+    /**
+     * Load all notifications for the current user
+     */
+    fun loadNotifications() {
+        viewModelScope.launch {
+            try {
+                val userId = auth.currentUser?.uid ?: return@launch
+
+                val snapshot = firestore.collection("notifications")
+                    .whereEqualTo("userId", userId)
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .get()
+                    .await()
+
+                val loadedNotifications = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        Notifications(
+                            id = doc.id,
+                            title = doc.getString("title") ?: "",
+                            message = doc.getString("message") ?: "",
+                            type = NotificationType.valueOf(
+                                doc.getString("type") ?: "GENERAL"
+                            ),
+                            timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                            isRead = doc.getBoolean("isRead") ?: false,
+                            relatedPostId = doc.getString("relatedPostId"),
+                            senderName = doc.getString("senderName")
+                        )
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+
+                notifications.clear()
+                notifications.addAll(loadedNotifications)
+                updateUnreadCount()
+            } catch (e: Exception) {
+                // Handle error silently or show error state
+            }
+        }
     }
 
-    // Mark notification as read
+    /**
+     * Listen for new notifications in real-time
+     */
+    private fun listenForNewNotifications() {
+        val userId = auth.currentUser?.uid ?: return
+
+        firestore.collection("notifications")
+            .whereEqualTo("userId", userId)
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+
+                for (change in snapshot.documentChanges) {
+                    when (change.type) {
+                        com.google.firebase.firestore.DocumentChange.Type.ADDED -> {
+                            try {
+                                val notification = Notifications(
+                                    id = change.document.id,
+                                    title = change.document.getString("title") ?: "",
+                                    message = change.document.getString("message") ?: "",
+                                    type = NotificationType.valueOf(
+                                        change.document.getString("type") ?: "GENERAL"
+                                    ),
+                                    timestamp = change.document.getLong("timestamp")
+                                        ?: System.currentTimeMillis(),
+                                    isRead = change.document.getBoolean("isRead") ?: false,
+                                    relatedPostId = change.document.getString("relatedPostId"),
+                                    senderName = change.document.getString("senderName")
+                                )
+
+                                // Only add if not already in list
+                                if (notifications.none { it.id == notification.id }) {
+                                    notifications.add(0, notification)
+                                    currentToast.value = notification
+                                    updateUnreadCount()
+                                }
+                            } catch (e: Exception) {
+                                // Skip malformed notification
+                            }
+                        }
+                        else -> { /* Handle MODIFIED and REMOVED if needed */ }
+                    }
+                }
+            }
+    }
+
+    /**
+     * Mark a specific notification as read
+     */
     fun markAsRead(notificationId: String) {
-        val index = notifications.indexOfFirst { it.id == notificationId }
-        if (index != -1) {
-            notifications[index] = notifications[index].copy(isRead = true)
-            updateUnreadCount()
-            // TODO: ADD FIREBASE UPDATES HERE
+        viewModelScope.launch {
+            try {
+                firestore.collection("notifications")
+                    .document(notificationId)
+                    .update("isRead", true)
+                    .await()
+
+                // Update local state
+                val index = notifications.indexOfFirst { it.id == notificationId }
+                if (index != -1) {
+                    notifications[index] = notifications[index].copy(isRead = true)
+                    updateUnreadCount()
+                }
+            } catch (e: Exception) {
+                // Handle error
+            }
         }
     }
 
-    // Mark all as read
+    /**
+     * Mark all notifications as read
+     */
     fun markAllAsRead() {
-        for (i in notifications.indices) {
-            notifications[i] = notifications[i].copy(isRead = true)
+        viewModelScope.launch {
+            try {
+                val userId = auth.currentUser?.uid ?: return@launch
+
+                val unreadNotifications = notifications.filter { !it.isRead }
+
+                unreadNotifications.forEach { notification ->
+                    firestore.collection("notifications")
+                        .document(notification.id)
+                        .update("isRead", true)
+                }
+
+                // Update local state
+                notifications.forEachIndexed { index, notification ->
+                    if (!notification.isRead) {
+                        notifications[index] = notification.copy(isRead = true)
+                    }
+                }
+                updateUnreadCount()
+            } catch (e: Exception) {
+                // Handle error
+            }
         }
-        updateUnreadCount()
-        // TODO: ADD FIREBASE BATCH UPDATE HERE
     }
 
-    // Delete notification
+    /**
+     * Delete a notification
+     */
     fun deleteNotification(notificationId: String) {
-        notifications.removeIf { it.id == notificationId }
-        updateUnreadCount()
-        // TODO: ADD FIREBASE DELETE HERE
+        viewModelScope.launch {
+            try {
+                firestore.collection("notifications")
+                    .document(notificationId)
+                    .delete()
+                    .await()
+
+                // Update local state
+                notifications.removeIf { it.id == notificationId }
+                updateUnreadCount()
+            } catch (e: Exception) {
+                // Handle error
+            }
+        }
     }
 
-    // Show toast notification
-    fun showToast(notification: Notifications) {
-        currentToast.value = notification
+    /**
+     * Create a new notification (for testing or system notifications)
+     */
+    fun createNotification(
+        title: String,
+        message: String,
+        type: NotificationType = NotificationType.GENERAL,
+        relatedPostId: String? = null,
+        senderName: String? = null,
+        targetUserId: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val userId = targetUserId ?: auth.currentUser?.uid ?: return@launch
+
+                firestore.collection("notifications").add(
+                    hashMapOf(
+                        "userId" to userId,
+                        "title" to title,
+                        "message" to message,
+                        "type" to type.name,
+                        "timestamp" to System.currentTimeMillis(),
+                        "isRead" to false,
+                        "relatedPostId" to relatedPostId,
+                        "senderName" to senderName
+                    )
+                ).await()
+            } catch (e: Exception) {
+                // Handle error
+            }
+        }
     }
 
-    // Dismiss toast
+    /**
+     * Dismiss the current toast notification
+     */
     fun dismissToast() {
         currentToast.value = null
     }
 
-    // Update unread count
     private fun updateUnreadCount() {
         unreadCount.value = notifications.count { !it.isRead }
-    }
-
-    // Add new notification (called when Firebase sends new one)
-    fun addNotification(notification: Notifications) {
-        notifications.add(0, notification)
-        updateUnreadCount()
-        showToast(notification)
     }
 }

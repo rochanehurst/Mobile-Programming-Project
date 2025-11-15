@@ -84,7 +84,6 @@ fun NotificationScreen(
                         onDelete = { viewModel.deleteNotification(notification.id) },
                         onClick = {
                             // TODO: Navigate to related post/content
-                            // Example: if (notification.relatedPostId != null) navigate to post
                         }
                     )
                 }

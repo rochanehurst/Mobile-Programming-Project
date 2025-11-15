@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,33 +31,34 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import com.example.mobile_programming_project.supabase
 import com.example.mobile_programming_project.ui.components.LostAndFoundPostDialog
 import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
+import com.example.mobile_programming_project.ui.components.CommentDialog
+import com.example.mobile_programming_project.ui.components.LikeButton
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
 import com.example.mobile_programming_project.ui.components.SafetyReportDialog
 import com.example.mobile_programming_project.ui.components.MarketplacePostDialog
 
 private const val SUPABASE_BUCKET = "user-uploads"
 
-// ---------------------- DATA ----------------------
 data class Post(
     val id: String,
     val userName: String,
     val timeAgo: String,
     val category: String,
     val content: String,
-    val likes: Int,
-    val comments: Int,
+    var likes: Int,
+    var comments: Int,
     val imageUrl: String? = null
 )
 
 val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety", "Other")
 
-// Demo posts for initial display
 val demoPost = listOf(
     Post(
         id = "demo1",
@@ -112,7 +112,6 @@ val demoPost = listOf(
     )
 )
 
-// ---------------------- HOME SCREEN ----------------------
 @Composable
 fun HomeScreen(
     onSignOut: () -> Unit = {},
@@ -126,8 +125,8 @@ fun HomeScreen(
     var selectedPostCategory by remember { mutableStateOf<String?> (null)}
     val posts = remember { mutableStateListOf<Post>() }
     var isLoading by remember { mutableStateOf(true) }
+    val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
 
-    // Load Firestore posts on first render
     LaunchedEffect(Unit) {
         try {
             val snapshot = Firebase.firestore.collection("posts").get().await()
@@ -162,7 +161,6 @@ fun HomeScreen(
     val filteredPosts = if (selectedCategory == "Home") posts
     else posts.filter { it.category.equals(selectedCategory, ignoreCase = true) }
 
-    // Wrap everything in Box to show toast overlay
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             floatingActionButton = {
@@ -218,7 +216,6 @@ fun HomeScreen(
                         }
                     },
                     actions = {
-                        // NOTIFICATION BELL WITH BADGE
                         Box {
                             IconButton(onClick = onNavigateToNotifications) {
                                 Icon(
@@ -227,7 +224,6 @@ fun HomeScreen(
                                     tint = Color.White
                                 )
                             }
-                            // Badge positioned at top-right of bell icon
                             if (viewModel.unreadCount.value > 0) {
                                 Box(
                                     modifier = Modifier
@@ -259,9 +255,16 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         items(filteredPosts) { post ->
-                            PostCard(post = post, onCategoryClick = { clickedCategory ->
-                                selectedCategory = clickedCategory
-                            })
+                            PostCard(
+                                post = post,
+                                currentUserEmail = currentUserEmail,
+                                onCategoryClick = { clickedCategory ->
+                                    selectedCategory = clickedCategory
+                                },
+                                onLikeChange = { newLikeCount ->
+                                    post.likes = newLikeCount
+                                }
+                            )
                         }
                     }
                 }
@@ -336,13 +339,11 @@ fun HomeScreen(
             }
         }
 
-
-        // TOAST NOTIFICATION OVERLAY (appears on top of everything)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(top = 70.dp) // Position below the TopAppBar
+                .padding(top = 70.dp)
         ) {
             NotificationToast(
                 notification = viewModel.currentToast.value,
@@ -352,28 +353,26 @@ fun HomeScreen(
     }
 }
 
-// ---------------------- CREATE POST DIALOG (WITH CATEGORY) ----------------------
 @Composable
-fun CategorySelectionDialog(
-    onDismiss: () -> Unit,
-    onCategorySelected: (String) -> Unit
+private fun PostCard(
+    post: Post,
+    currentUserEmail: String?,
+    onCategoryClick: (String) -> Unit,
+    onLikeChange: (Int) -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select Category") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                categories.filter { it != "Home" }.forEach { category ->
-                    OutlinedButton(
-                        onClick = { onCategorySelected(category) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            category,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-                }
+    var showCommentDialog by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF2458B6).copy(alpha = 0.65f)),
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("${post.userName} • ${post.timeAgo}", color = Color(0xFFEFF3FF),
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = { onCategoryClick(post.category) }) {
+                Text(post.category, color = Color(0xFFEAD6FF))
             }
         },
         confirmButton = {},
@@ -381,6 +380,52 @@ fun CategorySelectionDialog(
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
+
+            Spacer(Modifier.height(12.dp))
+            RowActions(
+                post = post,
+                onCommentClick = { showCommentDialog = true },
+                onLikeChange = onLikeChange
+            )
+        }
+    }
+
+    if (showCommentDialog) {
+        CommentDialog(
+            postId = post.id,
+            onDismiss = { showCommentDialog = false },
+            currentUserEmail = currentUserEmail
+        )
+    }
+}
+
+@Composable
+private fun RowActions(
+    post: Post,
+    onCommentClick: () -> Unit,
+    onLikeChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LikeButton(
+            postId = post.id,
+            initialLikeCount = post.likes,
+            onLikeChange = onLikeChange
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        IconButton(onClick = onCommentClick) {
+            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "Comments", tint = Color.White)
+        }
+        Text("${post.comments}", color = Color.White)
+
+        Spacer(Modifier.weight(1f))
+
+        IconButton(onClick = { }) {
+            Icon(Icons.Outlined.Send, contentDescription = "Share", tint = Color.White)
         }
     )
 }

@@ -1,6 +1,6 @@
 package com.example.mobile_programming_project.ui
 
-import android.app.Activity
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -127,6 +127,8 @@ private fun SignInScreen(
                         return@Button
                     }
                     isLoading = true
+                    errorMessage = null
+
                     auth.signInWithEmailAndPassword(email, password)
                         .addOnCompleteListener { task ->
                             isLoading = false
@@ -138,7 +140,21 @@ private fun SignInScreen(
                                 ).show()
                                 onLoginSuccess()
                             } else {
-                                errorMessage = task.exception?.message ?: "Sign in failed"
+                                val exception = task.exception
+                                Log.e("LoginError", "Login failed: ${exception?.message}", exception)
+
+                                errorMessage = when {
+                                    exception?.message?.contains("network", ignoreCase = true) == true ->
+                                        "Network error. Check your internet connection."
+                                    exception?.message?.contains("password", ignoreCase = true) == true ->
+                                        "Invalid email or password"
+                                    exception?.message?.contains("user", ignoreCase = true) == true ||
+                                            exception?.message?.contains("record", ignoreCase = true) == true ->
+                                        "User not found. Please check your email."
+                                    exception?.message?.contains("email", ignoreCase = true) == true ->
+                                        "Invalid email format"
+                                    else -> exception?.message ?: "Login failed. Please try again."
+                                }
                             }
                         }
                 },
@@ -147,19 +163,23 @@ private fun SignInScreen(
                     .fillMaxWidth()
                     .height(50.dp)
                     .clip(RoundedCornerShape(50)),
-                enabled = !isLoading
+                enabled = !isLoading && email.isNotBlank() && password.isNotBlank()
             ) {
                 Text(if (isLoading) "Logging in..." else "Sign in", fontSize = 18.sp)
             }
 
             errorMessage?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
+                Text(
+                    text = it,
+                    color = Color(0xFFFFCDD2),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
 
             Spacer(Modifier.height(16.dp))
 
-            Row(horizontalArrangement = Arrangement.Center) {
+            Row {
                 Text("Don't have an account?", color = Color.White)
                 Spacer(Modifier.width(4.dp))
                 TextButton(
@@ -167,158 +187,6 @@ private fun SignInScreen(
                     enabled = !isLoading
                 ) {
                     Text("Sign up", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SignUpScreen(
-    auth: FirebaseAuth,
-    onSignUpSuccess: () -> Unit,
-    onBackToLogin: () -> Unit
-) {
-    val context = LocalContext.current
-
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color(0xFF1565C0), Color(0xFF42A5F5))
-                )
-            )
-            .verticalScroll(rememberScrollState()),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 32.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Gather",
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            Text(
-                text = "Create Account",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Start
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("Email") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(50),
-                enabled = !isLoading
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(50),
-                enabled = !isLoading
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = confirmPassword,
-                onValueChange = { confirmPassword = it },
-                label = { Text("Confirm Password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(50),
-                enabled = !isLoading
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    when {
-                        email.isBlank() || password.isBlank() || confirmPassword.isBlank() -> {
-                            errorMessage = "Please fill in all fields"
-                        }
-                        password != confirmPassword -> {
-                            errorMessage = "Passwords do not match"
-                        }
-                        password.length < 6 -> {
-                            errorMessage = "Password must be at least 6 characters"
-                        }
-                        else -> {
-                            isLoading = true
-                            errorMessage = null
-                            auth.createUserWithEmailAndPassword(email, password)
-                                .addOnCompleteListener { task ->
-                                    isLoading = false
-                                    if (task.isSuccessful) {
-                                        Toast.makeText(
-                                            context,
-                                            "Account created successfully!",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        onSignUpSuccess()
-                                    } else {
-                                        errorMessage = task.exception?.message ?: "Sign up failed"
-                                    }
-                                }
-                        }
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .clip(RoundedCornerShape(50)),
-                enabled = !isLoading
-            ) {
-                Text(if (isLoading) "Creating account..." else "Sign up", fontSize = 18.sp)
-            }
-
-            errorMessage?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Row(horizontalArrangement = Arrangement.Center) {
-                Text("Already have an account?", color = Color.White)
-                Spacer(Modifier.width(4.dp))
-                TextButton(
-                    onClick = onBackToLogin,
-                    enabled = !isLoading
-                ) {
-                    Text("Sign in", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
