@@ -28,6 +28,30 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    var showSignUp by remember { mutableStateOf(false) }
+
+    if (showSignUp) {
+        SignUpScreen(
+            auth = auth,
+            onSignUpSuccess = onLoginSuccess,
+            onBackToLogin = { showSignUp = false }
+        )
+    } else {
+        SignInScreen(
+            auth = auth,
+            onLoginSuccess = onLoginSuccess,
+            onNavigateToSignUp = { showSignUp = true }
+        )
+    }
+}
+
+@Composable
+private fun SignInScreen(
+    auth: FirebaseAuth,
+    onLoginSuccess: () -> Unit,
+    onNavigateToSignUp: () -> Unit
+) {
+    val context = LocalContext.current
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -98,6 +122,10 @@ fun LoginScreen(
 
             Button(
                 onClick = {
+                    if (email.isBlank() || password.isBlank()) {
+                        errorMessage = "Please fill in all fields"
+                        return@Button
+                    }
                     isLoading = true
                     errorMessage = null
 
@@ -154,8 +182,11 @@ fun LoginScreen(
             Row {
                 Text("Don't have an account?", color = Color.White)
                 Spacer(Modifier.width(4.dp))
-                TextButton(onClick = { /* TODO: Navigate to Sign Up */ }) {
-                    Text("Sign up", color = Color.White)
+                TextButton(
+                    onClick = onNavigateToSignUp,
+                    enabled = !isLoading
+                ) {
+                    Text("Sign up", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }

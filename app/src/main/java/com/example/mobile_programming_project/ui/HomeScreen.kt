@@ -35,11 +35,14 @@ import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import com.example.mobile_programming_project.supabase
+import com.example.mobile_programming_project.ui.components.LostAndFoundPostDialog
 import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
 import com.example.mobile_programming_project.ui.components.CommentDialog
 import com.example.mobile_programming_project.ui.components.LikeButton
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
+import com.example.mobile_programming_project.ui.components.SafetyReportDialog
+import com.example.mobile_programming_project.ui.components.MarketplacePostDialog
 
 private const val SUPABASE_BUCKET = "user-uploads"
 
@@ -54,7 +57,7 @@ data class Post(
     val imageUrl: String? = null
 )
 
-val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety")
+val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety", "Other")
 
 val demoPost = listOf(
     Post(
@@ -119,6 +122,7 @@ fun HomeScreen(
     var selectedCategory by remember { mutableStateOf("Home") }
     var dropdownExpanded by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
+    var selectedPostCategory by remember { mutableStateOf<String?> (null)}
     val posts = remember { mutableStateListOf<Post>() }
     var isLoading by remember { mutableStateOf(true) }
     val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
@@ -267,13 +271,71 @@ fun HomeScreen(
             }
 
             if (showCreatePost) {
-                CreatePostDialog(
-                    onDismiss = { showCreatePost = false },
-                    onPostCreated = { newPost ->
-                        posts.add(0, newPost)
-                        showCreatePost = false
-                    }
-                )
+                if (selectedPostCategory == null) {
+                    //Show category selection
+                    CategorySelectionDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onCategorySelected = { category ->
+                            selectedPostCategory = category
+                        }
+                    )
+                } else if (selectedPostCategory == "Safety") {
+                    //Show Safety-specific dialog
+                    SafetyReportDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onReportSubmitted = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
+                } else if (selectedPostCategory == "Marketplace") {
+                    //Show Marketplace-specific dialog
+                    MarketplacePostDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onPostSubmitted = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
+                } else if (selectedPostCategory == "Lost & Found") {
+                    //Show Lost & Found-specific dialog
+                    LostAndFoundPostDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onPostSubmitted = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
+                } else {
+                    //other categories
+                    CreatePostDialogWithCategory(
+                        category = selectedPostCategory!!,
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onPostCreated = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
+                }
             }
         }
 
@@ -312,20 +374,11 @@ private fun PostCard(
             TextButton(onClick = { onCategoryClick(post.category) }) {
                 Text(post.category, color = Color(0xFFEAD6FF))
             }
-            Spacer(Modifier.height(12.dp))
-            Text(post.content, color = Color.White)
-
-            post.imageUrl?.let { url ->
-                Spacer(Modifier.height(12.dp))
-                AsyncImage(
-                    model = url,
-                    contentDescription = "Post image",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    contentScale = ContentScale.Crop
-                )
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
             }
 
             Spacer(Modifier.height(12.dp))
@@ -374,24 +427,27 @@ private fun RowActions(
         IconButton(onClick = { }) {
             Icon(Icons.Outlined.Send, contentDescription = "Share", tint = Color.White)
         }
-    }
+    )
 }
 
 @Composable
-fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
+fun CreatePostDialogWithCategory(
+    category: String,
+    onDismiss: () -> Unit,
+    onPostCreated: (Post) -> Unit
+) {
     val firestore = Firebase.firestore
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
     var text by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf(categories.first { it != "Home" }) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var isUploading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri -> if (uri != null) imageUri = uri }
+    ) { uri -> imageUri = uri }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -406,16 +462,10 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
                             try {
                                 var imageUrl: String? = null
                                 if (imageUri != null) {
-                                    val bytes = context.contentResolver.openInputStream(imageUri!!)?.use {
-                                        it.readBytes()
-                                    }
+                                    val bytes = context.contentResolver.openInputStream(imageUri!!)?.use { it.readBytes() }
                                     if (bytes != null) {
                                         val path = "images/${System.currentTimeMillis()}.jpg"
-                                        supabase.storage.from(SUPABASE_BUCKET).upload(
-                                            path = path,
-                                            data = bytes,
-                                            upsert = true
-                                        )
+                                        supabase.storage.from(SUPABASE_BUCKET).upload(path, bytes, upsert = true)
                                         imageUrl = supabase.storage.from(SUPABASE_BUCKET).publicUrl(path)
                                     }
                                 }
@@ -424,7 +474,7 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
                                     id = System.currentTimeMillis().toString(),
                                     userName = "You",
                                     timeAgo = "Just now",
-                                    category = selectedCategory,
+                                    category = category,
                                     content = text,
                                     likes = 0,
                                     comments = 0,
@@ -453,19 +503,12 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
                         }
                     }
                 }
-            ) {
-                Text(if (isUploading) "Posting..." else "Post")
-            }
+            ) { Text(if (isUploading) "Posting..." else "Post") }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !isUploading
-            ) {
-                Text("Cancel")
-            }
+            TextButton(onClick = onDismiss, enabled = !isUploading) { Text("Cancel") }
         },
-        title = { Text("Create Post") },
+        title = { Text("Create Post - $category") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -477,21 +520,13 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
                     enabled = !isUploading
                 )
 
-                DropdownMenuBox(
-                    selected = selectedCategory,
-                    onSelect = { selectedCategory = it },
-                    enabled = !isUploading
-                )
-
                 Spacer(Modifier.height(8.dp))
 
                 Button(
                     onClick = { imagePickerLauncher.launch("image/*") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1)),
                     enabled = !isUploading
-                ) {
-                    Text(if (imageUri == null) "Add Photo" else "Change Photo")
-                }
+                ) { Text(if (imageUri == null) "Add Photo" else "Change Photo") }
 
                 imageUri?.let { uri ->
                     Spacer(Modifier.height(8.dp))
@@ -515,6 +550,70 @@ fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
     )
 }
 
+// ---------------------- POST CARD ----------------------
+@Composable
+private fun PostCard(post: Post, onCategoryClick: (String) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF2458B6).copy(alpha = 0.65f)),
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("${post.userName} • ${post.timeAgo}", color = Color(0xFFEFF3FF),
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = { onCategoryClick(post.category) }) {
+                Text(post.category, color = Color(0xFFEAD6FF))
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(post.content, color = Color.White)
+
+            post.imageUrl?.let { url ->
+                Spacer(Modifier.height(12.dp))
+                AsyncImage(
+                    model = url,
+                    contentDescription = "Post image",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            RowActions(likes = post.likes, comments = post.comments)
+        }
+    }
+}
+
+@Composable
+private fun RowActions(likes: Int, comments: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = { }) {
+            Icon(Icons.Outlined.FavoriteBorder, contentDescription = "Like", tint = Color.White)
+        }
+        Text("$likes", color = Color.White)
+
+        Spacer(Modifier.weight(1f))
+
+        IconButton(onClick = { }) {
+            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "Comments", tint = Color.White)
+        }
+        Text("$comments", color = Color.White)
+
+        Spacer(Modifier.weight(1f))
+
+        IconButton(onClick = { }) {
+            Icon(Icons.Outlined.Send, contentDescription = "Share", tint = Color.White)
+        }
+    }
+}
+
+// ---------------------- CREATE POST DIALOG ----------------------
 @Composable
 fun DropdownMenuBox(selected: String, onSelect: (String) -> Unit, enabled: Boolean = true) {
     var expanded by remember { mutableStateOf(false) }
