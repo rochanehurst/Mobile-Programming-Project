@@ -35,10 +35,12 @@ import com.google.firebase.firestore.ktx.firestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import com.example.mobile_programming_project.supabase
+import com.example.mobile_programming_project.ui.components.LostAndFoundPostDialog
 import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
 import com.example.mobile_programming_project.ui.components.SafetyReportDialog
+import com.example.mobile_programming_project.ui.components.MarketplacePostDialog
 
 private const val SUPABASE_BUCKET = "user-uploads"
 
@@ -54,7 +56,7 @@ data class Post(
     val imageUrl: String? = null
 )
 
-val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety")
+val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety", "Other")
 
 // Demo posts for initial display
 val demoPost = listOf(
@@ -267,6 +269,7 @@ fun HomeScreen(
 
             if (showCreatePost) {
                 if (selectedPostCategory == null) {
+                    //Show category selection
                     CategorySelectionDialog(
                         onDismiss = {
                             showCreatePost = false
@@ -277,6 +280,7 @@ fun HomeScreen(
                         }
                     )
                 } else if (selectedPostCategory == "Safety") {
+                    //Show Safety-specific dialog
                     SafetyReportDialog(
                         onDismiss = {
                             showCreatePost = false
@@ -288,7 +292,34 @@ fun HomeScreen(
                             selectedPostCategory = null
                         }
                     )
+                } else if (selectedPostCategory == "Marketplace") {
+                    //Show Marketplace-specific dialog
+                    MarketplacePostDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onPostSubmitted = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
+                } else if (selectedPostCategory == "Lost & Found") {
+                    //Show Lost & Found-specific dialog
+                    LostAndFoundPostDialog(
+                        onDismiss = {
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        },
+                        onPostSubmitted = { newPost ->
+                            posts.add(0, newPost)
+                            showCreatePost = false
+                            selectedPostCategory = null
+                        }
+                    )
                 } else {
+                    //other categories
                     CreatePostDialogWithCategory(
                         category = selectedPostCategory!!,
                         onDismiss = {
@@ -304,6 +335,7 @@ fun HomeScreen(
                 }
             }
         }
+
 
         // TOAST NOTIFICATION OVERLAY (appears on top of everything)
         Box(
