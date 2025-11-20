@@ -1,7 +1,6 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.example.mobile_programming_project.ui
 
-import io.github.jan.supabase.storage.storage
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,7 +14,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,32 +28,38 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.google.firebase.ktx.Firebase
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import com.example.mobile_programming_project.supabase
+import com.example.mobile_programming_project.ui.components.LostAndFoundPostDialog
 import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
+import com.example.mobile_programming_project.ui.components.CommentDialog
+import com.example.mobile_programming_project.ui.components.LikeButton
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
+import com.example.mobile_programming_project.ui.components.SafetyReportDialog
+import com.example.mobile_programming_project.ui.components.MarketplacePostDialog
+import com.example.mobile_programming_project.ui.components.CategorySelectionDialog
+import com.example.mobile_programming_project.ui.components.CreatePostDialogWithCategory
 
 private const val SUPABASE_BUCKET = "user-uploads"
 
-// ---------------------- DATA ----------------------
 data class Post(
     val id: String,
     val userName: String,
     val timeAgo: String,
     val category: String,
     val content: String,
-    val likes: Int,
-    val comments: Int,
+    var likes: Int,
+    var comments: Int,
     val imageUrl: String? = null
 )
 
-val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety")
+val categories = listOf("Home", "Lost & Found", "Marketplace", "Safety", "Other")
 
-// Demo posts for initial display
 val demoPost = listOf(
     Post(
         id = "demo1",
@@ -109,7 +113,6 @@ val demoPost = listOf(
     )
 )
 
-// ---------------------- HOME SCREEN ----------------------
 @Composable
 fun HomeScreen(
     onSignOut: () -> Unit = {},
@@ -120,45 +123,54 @@ fun HomeScreen(
     var selectedCategory by remember { mutableStateOf("Home") }
     var dropdownExpanded by remember { mutableStateOf(false) }
     var showCreatePost by remember { mutableStateOf(false) }
+    var selectedPostCategory by remember { mutableStateOf<String?>(null) }
     val posts = remember { mutableStateListOf<Post>() }
     var isLoading by remember { mutableStateOf(true) }
+    val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
 
-    // Load Firestore posts on first render
     LaunchedEffect(Unit) {
-        try {
-            val snapshot = Firebase.firestore.collection("posts").get().await()
-            val loaded = snapshot.documents.mapNotNull { doc ->
-                try {
-                    Post(
-                        id = doc.id,
-                        userName = doc.getString("userName") ?: "Unknown",
-                        timeAgo = doc.getString("timeAgo") ?: "",
-                        category = doc.getString("category") ?: "Home",
-                        content = doc.getString("content") ?: "",
-                        likes = (doc.getLong("likes") ?: 0).toInt(),
-                        comments = (doc.getLong("comments") ?: 0).toInt(),
-                        imageUrl = doc.getString("imageUrl")
-                    )
-                } catch (e: Exception) {
-                    null
+
+        // REAL-TIME Firestore sync
+        Firebase.firestore.collection("posts")
+            .addSnapshotListener { snapshot, error ->
+
+                if (error != null || snapshot == null) {
+                    // fallback to demo
+                    posts.clear()
+                    posts.addAll(demoPost)
+                    isLoading = false
+                    return@addSnapshotListener
                 }
+
+                val loaded = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        Post(
+                            id = doc.id,
+                            userName = doc.getString("userName") ?: "Unknown",
+                            timeAgo = doc.getString("timeAgo") ?: "",
+                            category = doc.getString("category") ?: "Home",
+                            content = doc.getString("content") ?: "",
+                            likes = (doc.getLong("likes") ?: 0).toInt(),
+                            comments = (doc.getLong("comments") ?: 0).toInt(),
+                            imageUrl = doc.getString("imageUrl")
+                        )
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+
+                posts.clear()
+                if (loaded.isEmpty()) posts.addAll(demoPost)
+                else posts.addAll(loaded)
+
+                isLoading = false
             }
-            posts.clear()
-            if (loaded.isEmpty()) {
-                posts.addAll(demoPost)
-            } else {
-                posts.addAll(loaded)
-            }
-        } catch (e: Exception) {
-            posts.addAll(demoPost)
-        }
-        isLoading = false
     }
+
 
     val filteredPosts = if (selectedCategory == "Home") posts
     else posts.filter { it.category.equals(selectedCategory, ignoreCase = true) }
 
-    // Wrap everything in Box to show toast overlay
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             floatingActionButton = {
@@ -181,7 +193,7 @@ fun HomeScreen(
                     navigationIcon = {
                         if (selectedCategory != "Home") {
                             IconButton(onClick = { selectedCategory = "Home" }) {
-                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Home", tint = Color.White)
+                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                             }
                         }
                     },
@@ -195,7 +207,7 @@ fun HomeScreen(
                                 )
                             )
                             IconButton(onClick = { dropdownExpanded = true }) {
-                                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Select category", tint = Color.White)
+                                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.White)
                             }
                             DropdownMenu(
                                 expanded = dropdownExpanded,
@@ -214,7 +226,6 @@ fun HomeScreen(
                         }
                     },
                     actions = {
-                        // NOTIFICATION BELL WITH BADGE
                         Box {
                             IconButton(onClick = onNavigateToNotifications) {
                                 Icon(
@@ -223,15 +234,11 @@ fun HomeScreen(
                                     tint = Color.White
                                 )
                             }
-                            // Badge positioned at top-right of bell icon
                             if (viewModel.unreadCount.value > 0) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(top = 8.dp, end = 8.dp)
-                                ) {
-                                    NotificationBadge(count = viewModel.unreadCount.value)
-                                }
+                                NotificationBadge(
+                                    count = viewModel.unreadCount.value,
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                )
                             }
                         }
 
@@ -241,12 +248,15 @@ fun HomeScreen(
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
-                        titleContentColor = Color.White
+                        titleContentColor = Color.White,
+                        navigationIconContentColor = Color.White,
+                        actionIconContentColor = Color.White
                     )
                 )
 
+
                 if (isLoading) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
                         CircularProgressIndicator(color = Color.White)
                     }
                 } else {
@@ -255,56 +265,129 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         items(filteredPosts) { post ->
-                            PostCard(post = post, onCategoryClick = { clickedCategory ->
-                                selectedCategory = clickedCategory
-                            })
+                            PostCard(
+                                post = post,
+                                currentUserEmail = currentUserEmail,
+                                onCategoryClick = { clickedCategory ->
+                                    selectedCategory = clickedCategory
+                                },
+                                onLikeChange = { newLikeCount ->
+                                    post.likes = newLikeCount
+                                }
+                            )
                         }
                     }
                 }
             }
 
             if (showCreatePost) {
-                CreatePostDialog(
-                    onDismiss = { showCreatePost = false },
-                    onPostCreated = { newPost ->
-                        posts.add(0, newPost)
-                        showCreatePost = false
-                    }
-                )
+                when (selectedPostCategory) {
+                    null -> CategorySelectionDialog(
+                        onDismiss = {
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        },
+                        onCategorySelected = { selectedPostCategory = it }
+                    )
+
+                    "Safety" -> SafetyReportDialog(
+                        onDismiss = {
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        },
+                        onReportSubmitted = {
+                            posts.add(0, it)
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        }
+                    )
+
+                    "Marketplace" -> MarketplacePostDialog(
+                        onDismiss = {
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        },
+                        onPostSubmitted = {
+                            posts.add(0, it)
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        }
+                    )
+
+                    "Lost & Found" -> LostAndFoundPostDialog(
+                        onDismiss = {
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        },
+                        onPostSubmitted = {
+                            posts.add(0, it)
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        }
+                    )
+
+                    else -> CreatePostDialogWithCategory(
+                        category = selectedPostCategory!!,
+                        onDismiss = {
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        },
+                        onPostCreated = {
+                            posts.add(0, it)
+                            selectedPostCategory = null
+                            showCreatePost = false
+                        }
+                    )
+                }
             }
         }
 
-        // TOAST NOTIFICATION OVERLAY (appears on top of everything)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(top = 70.dp) // Position below the TopAppBar
+                .padding(top = 70.dp)
         ) {
             NotificationToast(
                 notification = viewModel.currentToast.value,
                 onDismiss = { viewModel.dismissToast() }
             )
         }
+
     }
 }
 
-// ---------------------- POST CARD ----------------------
 @Composable
-private fun PostCard(post: Post, onCategoryClick: (String) -> Unit) {
+private fun PostCard(
+    post: Post,
+    currentUserEmail: String?,
+    onCategoryClick: (String) -> Unit,
+    onLikeChange: (Int) -> Unit
+) {
+    var showCommentDialog by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF2458B6).copy(alpha = 0.65f)),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("${post.userName} • ${post.timeAgo}", color = Color(0xFFEFF3FF),
-                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+
+            Text(
+                "${post.userName} • ${post.timeAgo}",
+                color = Color(0xFFEFF3FF),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
             Spacer(Modifier.height(4.dp))
+
             TextButton(onClick = { onCategoryClick(post.category) }) {
                 Text(post.category, color = Color(0xFFEAD6FF))
             }
+
             Spacer(Modifier.height(12.dp))
+
             Text(post.content, color = Color.White)
 
             post.imageUrl?.let { url ->
@@ -321,193 +404,51 @@ private fun PostCard(post: Post, onCategoryClick: (String) -> Unit) {
             }
 
             Spacer(Modifier.height(12.dp))
-            RowActions(likes = post.likes, comments = post.comments)
+
+            RowActions(
+                post = post,
+                onCommentClick = { showCommentDialog = true },
+                onLikeChange = onLikeChange
+            )
         }
+    }
+
+    if (showCommentDialog) {
+        CommentDialog(
+            postId = post.id,
+            onDismiss = { showCommentDialog = false },
+            currentUserEmail = currentUserEmail
+        )
     }
 }
 
 @Composable
-private fun RowActions(likes: Int, comments: Int) {
+private fun RowActions(
+    post: Post,
+    onCommentClick: () -> Unit,
+    onLikeChange: (Int) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = { }) {
-            Icon(Icons.Outlined.FavoriteBorder, contentDescription = "Like", tint = Color.White)
-        }
-        Text("$likes", color = Color.White)
+        LikeButton(
+            postId = post.id,
+            initialLikeCount = post.likes,
+            onLikeChange = onLikeChange
+        )
 
         Spacer(Modifier.weight(1f))
 
-        IconButton(onClick = { }) {
+        IconButton(onClick = onCommentClick) {
             Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "Comments", tint = Color.White)
         }
-        Text("$comments", color = Color.White)
+        Text("${post.comments}", color = Color.White)
 
         Spacer(Modifier.weight(1f))
 
         IconButton(onClick = { }) {
             Icon(Icons.Outlined.Send, contentDescription = "Share", tint = Color.White)
-        }
-    }
-}
-
-// ---------------------- CREATE POST DIALOG ----------------------
-@Composable
-fun CreatePostDialog(onDismiss: () -> Unit, onPostCreated: (Post) -> Unit) {
-    val firestore = Firebase.firestore
-    val coroutineScope = rememberCoroutineScope()
-    val context = LocalContext.current
-
-    var text by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf(categories.first { it != "Home" }) }
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var isUploading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri -> if (uri != null) imageUri = uri }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                enabled = !isUploading && text.isNotBlank(),
-                onClick = {
-                    if (text.isNotBlank()) {
-                        isUploading = true
-                        errorMessage = null
-                        coroutineScope.launch {
-                            try {
-                                var imageUrl: String? = null
-                                if (imageUri != null) {
-                                    val bytes = context.contentResolver.openInputStream(imageUri!!)?.use {
-                                        it.readBytes()
-                                    }
-                                    if (bytes != null) {
-                                        val path = "images/${System.currentTimeMillis()}.jpg"
-                                        supabase.storage.from(SUPABASE_BUCKET).upload(
-                                            path = path,
-                                            data = bytes,
-                                            upsert = true
-                                        )
-                                        imageUrl = supabase.storage.from(SUPABASE_BUCKET).publicUrl(path)
-                                    }
-                                }
-
-                                val newPost = Post(
-                                    id = System.currentTimeMillis().toString(),
-                                    userName = "You",
-                                    timeAgo = "Just now",
-                                    category = selectedCategory,
-                                    content = text,
-                                    likes = 0,
-                                    comments = 0,
-                                    imageUrl = imageUrl
-                                )
-
-                                firestore.collection("posts").add(
-                                    hashMapOf(
-                                        "userName" to newPost.userName,
-                                        "timeAgo" to newPost.timeAgo,
-                                        "category" to newPost.category,
-                                        "content" to newPost.content,
-                                        "likes" to newPost.likes,
-                                        "comments" to newPost.comments,
-                                        "imageUrl" to imageUrl
-                                    )
-                                ).await()
-
-                                onPostCreated(newPost)
-                                isUploading = false
-                                onDismiss()
-                            } catch (e: Exception) {
-                                errorMessage = "Failed to create post: ${e.message}"
-                                isUploading = false
-                            }
-                        }
-                    }
-                }
-            ) {
-                Text(if (isUploading) "Posting..." else "Post")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !isUploading
-            ) {
-                Text("Cancel")
-            }
-        },
-        title = { Text("Create Post") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("What's on your mind?") },
-                    singleLine = false,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isUploading
-                )
-
-                DropdownMenuBox(
-                    selected = selectedCategory,
-                    onSelect = { selectedCategory = it },
-                    enabled = !isUploading
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                Button(
-                    onClick = { imagePickerLauncher.launch("image/*") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1)),
-                    enabled = !isUploading
-                ) {
-                    Text(if (imageUri == null) "Add Photo" else "Change Photo")
-                }
-
-                imageUri?.let { uri ->
-                    Spacer(Modifier.height(8.dp))
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = "Selected image",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-
-                errorMessage?.let { msg ->
-                    Spacer(Modifier.height(8.dp))
-                    Text(msg, color = MaterialTheme.colorScheme.error)
-                }
-            }
-        }
-    )
-}
-
-@Composable
-fun DropdownMenuBox(selected: String, onSelect: (String) -> Unit, enabled: Boolean = true) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        OutlinedButton(
-            onClick = { expanded = true },
-            enabled = enabled
-        ) {
-            Text(selected)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            categories.filter { it != "Home" }.forEach {
-                DropdownMenuItem(text = { Text(it) }, onClick = {
-                    onSelect(it)
-                    expanded = false
-                })
-            }
         }
     }
 }

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,6 +18,22 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val localPropertiesFile = rootProject.file("local.properties")
+        val supabaseUrl = if (localPropertiesFile.exists()) {
+            val props = Properties()
+            localPropertiesFile.inputStream().use { props.load(it) }
+            props.getProperty("supabase.url") ?: ""
+        } else ""
+
+        val supabaseKey = if (localPropertiesFile.exists()) {
+            val props = Properties()
+            localPropertiesFile.inputStream().use { props.load(it) }
+            props.getProperty("supabase.key") ?: ""
+        } else ""
+
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_KEY", "\"$supabaseKey\"")
     }
 
     compileOptions {
@@ -29,11 +47,11 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
-    // --- AndroidX + Compose ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -46,22 +64,18 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
     implementation("io.coil-kt:coil-compose:2.6.0")
-    implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("io.ktor:ktor-client-android:2.3.7")
 
-    // --- Firebase ---
     implementation("com.google.firebase:firebase-analytics:22.0.0")
     implementation("com.google.firebase:firebase-auth:23.0.0")
     implementation("com.google.firebase:firebase-firestore-ktx:25.0.0")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
 
-    // --- Supabase (updated versions) ---
     implementation(platform("io.github.jan-tennert.supabase:bom:2.0.0"))
-    implementation("io.github.jan-tennert.supabase:storage-kt")
+    implementation("io.github.jan-tennert.supabase:storage-kt")  
     implementation("io.github.jan-tennert.supabase:gotrue-kt")
     implementation("io.ktor:ktor-client-android:2.3.7")
 
-    // --- Testing ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

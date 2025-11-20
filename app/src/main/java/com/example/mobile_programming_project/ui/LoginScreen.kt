@@ -1,6 +1,6 @@
 package com.example.mobile_programming_project.ui
 
-import android.app.Activity
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -26,6 +26,30 @@ import com.google.firebase.auth.FirebaseAuth
 fun LoginScreen(
     auth: FirebaseAuth = FirebaseAuth.getInstance(),
     onLoginSuccess: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    var showSignUp by remember { mutableStateOf(false) }
+
+    if (showSignUp) {
+        SignUpScreen(
+            auth = auth,
+            onSignUpSuccess = onLoginSuccess,
+            onBackToLogin = { showSignUp = false }
+        )
+    } else {
+        SignInScreen(
+            auth = auth,
+            onLoginSuccess = onLoginSuccess,
+            onNavigateToSignUp = { showSignUp = true }
+        )
+    }
+}
+
+@Composable
+private fun SignInScreen(
+    auth: FirebaseAuth,
+    onLoginSuccess: () -> Unit,
+    onNavigateToSignUp: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -77,7 +101,8 @@ fun LoginScreen(
                 label = { Text("Email") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(50)
+                shape = RoundedCornerShape(50),
+                enabled = !isLoading
             )
 
             Spacer(Modifier.height(12.dp))
@@ -89,14 +114,21 @@ fun LoginScreen(
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(50)
+                shape = RoundedCornerShape(50),
+                enabled = !isLoading
             )
 
             Spacer(Modifier.height(16.dp))
 
             Button(
                 onClick = {
+                    if (email.isBlank() || password.isBlank()) {
+                        errorMessage = "Please fill in all fields"
+                        return@Button
+                    }
                     isLoading = true
+                    errorMessage = null
+
                     auth.signInWithEmailAndPassword(email, password)
                         .addOnCompleteListener { task ->
                             isLoading = false
@@ -108,7 +140,21 @@ fun LoginScreen(
                                 ).show()
                                 onLoginSuccess()
                             } else {
-                                errorMessage = task.exception?.message
+                                val exception = task.exception
+                                Log.e("LoginError", "Login failed: ${exception?.message}", exception)
+
+                                errorMessage = when {
+                                    exception?.message?.contains("network", ignoreCase = true) == true ->
+                                        "Network error. Check your internet connection."
+                                    exception?.message?.contains("password", ignoreCase = true) == true ->
+                                        "Invalid email or password"
+                                    exception?.message?.contains("user", ignoreCase = true) == true ||
+                                            exception?.message?.contains("record", ignoreCase = true) == true ->
+                                        "User not found. Please check your email."
+                                    exception?.message?.contains("email", ignoreCase = true) == true ->
+                                        "Invalid email format"
+                                    else -> exception?.message ?: "Login failed. Please try again."
+                                }
                             }
                         }
                 },
@@ -116,23 +162,31 @@ fun LoginScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
-                    .clip(RoundedCornerShape(50))
+                    .clip(RoundedCornerShape(50)),
+                enabled = !isLoading && email.isNotBlank() && password.isNotBlank()
             ) {
                 Text(if (isLoading) "Logging in..." else "Sign in", fontSize = 18.sp)
             }
 
             errorMessage?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
+                Text(
+                    text = it,
+                    color = Color(0xFFFFCDD2),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
 
             Spacer(Modifier.height(16.dp))
 
             Row {
-                Text("Don’t have an account?", color = Color.White)
+                Text("Don't have an account?", color = Color.White)
                 Spacer(Modifier.width(4.dp))
-                TextButton(onClick = { /* TODO: Navigate to Sign Up */ }) {
-                    Text("Sign up", color = Color.White)
+                TextButton(
+                    onClick = onNavigateToSignUp,
+                    enabled = !isLoading
+                ) {
+                    Text("Sign up", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
