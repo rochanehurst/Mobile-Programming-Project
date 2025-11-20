@@ -134,21 +134,26 @@ fun LostAndFoundPostDialog(
                             )
 
                             // Save to Firestore
-                            firestore.collection("posts").add(
-                                hashMapOf(
-                                    "userName" to newPost.userName,
-                                    "timeAgo" to newPost.timeAgo,
-                                    "category" to newPost.category,
-                                    "content" to newPost.content,
-                                    "likes" to newPost.likes,
-                                    "comments" to newPost.comments,
-                                    "imageUrl" to attachmentUrl,
-                                    "postType" to postType,
-                                    "title" to title,
-                                    "itemCategory" to itemCategory,
-                                    "location" to location,
-                                    "date" to formattedDate
-                                )
+                            firestore.collection("posts")
+                                .document(newPost.id)   // <-- uses your custom ID
+                                .set(
+                                    hashMapOf(
+                                        "id" to newPost.id,
+                                        "userName" to newPost.userName,
+                                        "timeAgo" to newPost.timeAgo,
+                                        "category" to newPost.category,
+                                        "content" to newPost.content,
+                                        "likes" to newPost.likes,
+                                        "comments" to newPost.comments,
+                                        "imageUrl" to attachmentUrl,
+                                        "postType" to postType,
+                                        "title" to title,
+                                        "itemCategory" to itemCategory,
+                                        "location" to location,
+                                        "date" to formattedDate
+                                    )
+
+
                             ).await()
 
                             onPostSubmitted(newPost)

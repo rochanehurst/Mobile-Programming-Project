@@ -93,12 +93,15 @@ fun NotificationToast(
     }
 }
 
-// Notification Badge (red dot with count)
+// Notification Badge (with modifier support)
 @Composable
-fun NotificationBadge(count: Int) {
+fun NotificationBadge(
+    count: Int,
+    modifier: Modifier = Modifier
+) {
     if (count > 0) {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .size(20.dp)
                 .clip(CircleShape)
                 .background(Color.Red),
@@ -145,6 +148,7 @@ fun NotificationItem(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.Top
         ) {
+
             // Icon
             Box(
                 modifier = Modifier
@@ -163,7 +167,6 @@ fun NotificationItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Content
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -208,10 +211,7 @@ fun NotificationItem(
 
                     Box {
                         IconButton(onClick = { showMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More options"
-                            )
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
                         }
 
                         DropdownMenu(

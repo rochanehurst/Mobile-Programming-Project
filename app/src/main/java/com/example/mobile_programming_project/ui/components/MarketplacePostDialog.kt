@@ -146,6 +146,7 @@ fun MarketplacePostDialog(
                             // Save to Firestore
                             firestore.collection("posts").add(
                                 hashMapOf(
+                                    "id" to newPost.id,
                                     "userName" to newPost.userName,
                                     "timeAgo" to newPost.timeAgo,
                                     "category" to newPost.category,
