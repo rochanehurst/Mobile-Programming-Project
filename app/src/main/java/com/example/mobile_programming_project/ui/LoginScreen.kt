@@ -51,6 +51,13 @@ private fun SignInScreen(
     onLoginSuccess: () -> Unit,
     onNavigateToSignUp: () -> Unit
 ) {
+    // 🚧 DEV BYPASS — REMOVE BEFORE SUBMITTING 🚧
+    val devBypass = true
+    if (devBypass) {
+        onLoginSuccess()
+        return
+    }
+
     val context = LocalContext.current
 
     var email by remember { mutableStateOf("") }

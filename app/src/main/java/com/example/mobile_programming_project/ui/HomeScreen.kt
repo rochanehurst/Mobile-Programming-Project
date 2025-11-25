@@ -10,11 +10,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Send
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +36,7 @@ import com.example.mobile_programming_project.ui.components.NotificationBadge
 import com.example.mobile_programming_project.ui.components.NotificationToast
 import com.example.mobile_programming_project.ui.components.CommentDialog
 import com.example.mobile_programming_project.ui.components.LikeButton
+import com.example.mobile_programming_project.ui.components.ProfileDrawerContent
 import com.example.mobile_programming_project.viewmodel.NotificationViewModel
 import com.example.mobile_programming_project.ui.components.SafetyReportDialog
 import com.example.mobile_programming_project.ui.components.MarketplacePostDialog
@@ -113,11 +111,48 @@ val demoPost = listOf(
     )
 )
 
+// ---------------------- HOME SCREEN WITH DRAWER ----------------------
 @Composable
 fun HomeScreen(
     onSignOut: () -> Unit = {},
     onNavigateToNotifications: () -> Unit = {},
     viewModel: NotificationViewModel = viewModel()
+) {
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ProfileDrawerContent(
+                onSignOut = {
+                    scope.launch {
+                        drawerState.close()
+                        onSignOut()
+                    }
+                },
+                onCloseDrawer = {
+                    scope.launch { drawerState.close() }
+                }
+            )
+        }
+    ) {
+        HomeScreenContent(
+            onSignOut = onSignOut,
+            onNavigateToNotifications = onNavigateToNotifications,
+            onOpenDrawer = { scope.launch { drawerState.open() } },
+            viewModel = viewModel
+        )
+    }
+}
+
+// ---------------------- HOME SCREEN CONTENT ----------------------
+@Composable
+fun HomeScreenContent(
+    onSignOut: () -> Unit,
+    onNavigateToNotifications: () -> Unit,
+    onOpenDrawer: () -> Unit,
+    viewModel: NotificationViewModel
 ) {
     val gradient = Brush.verticalGradient(listOf(Color(0xFF1565C0), Color(0xFF42A5F5)))
     var selectedCategory by remember { mutableStateOf("Home") }
@@ -129,7 +164,6 @@ fun HomeScreen(
     val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email
 
     LaunchedEffect(Unit) {
-
         // REAL-TIME Firestore sync
         Firebase.firestore.collection("posts")
             .addSnapshotListener { snapshot, error ->
@@ -167,7 +201,6 @@ fun HomeScreen(
             }
     }
 
-
     val filteredPosts = if (selectedCategory == "Home") posts
     else posts.filter { it.category.equals(selectedCategory, ignoreCase = true) }
 
@@ -191,9 +224,21 @@ fun HomeScreen(
             ) {
                 TopAppBar(
                     navigationIcon = {
-                        if (selectedCategory != "Home") {
+                        if (selectedCategory == "Home") {
+                            IconButton(onClick = onOpenDrawer) {
+                                Icon(
+                                    Icons.Filled.Menu,
+                                    contentDescription = "Open Profile Menu",
+                                    tint = Color.White
+                                )
+                            }
+                        } else {
                             IconButton(onClick = { selectedCategory = "Home" }) {
-                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                                Icon(
+                                    Icons.Filled.ArrowBack,
+                                    contentDescription = "Back to Home",
+                                    tint = Color.White
+                                )
                             }
                         }
                     },
@@ -235,15 +280,14 @@ fun HomeScreen(
                                 )
                             }
                             if (viewModel.unreadCount.value > 0) {
-                                NotificationBadge(
-                                    count = viewModel.unreadCount.value,
-                                    modifier = Modifier.align(Alignment.TopEnd)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(top = 8.dp, end = 8.dp)
+                                ) {
+                                    NotificationBadge(count = viewModel.unreadCount.value)
+                                }
                             }
-                        }
-
-                        TextButton(onClick = onSignOut) {
-                            Text("Sign out", color = Color.White)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -253,7 +297,6 @@ fun HomeScreen(
                         actionIconContentColor = Color.White
                     )
                 )
-
 
                 if (isLoading) {
                     Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -353,7 +396,6 @@ fun HomeScreen(
                 onDismiss = { viewModel.dismissToast() }
             )
         }
-
     }
 }
 
